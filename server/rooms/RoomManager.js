@@ -27,11 +27,12 @@ class RoomManager {
   joinRoom(socket, roomId, name, isHuman) {
     const room = this.rooms.get(roomId);
     if (!room) return { success: false, error: 'Salle introuvable' };
+    if (!name || String(name).trim() === '') return { success: false, error: 'Un pseudo est requis' };
     if (room.started && room.game) return { success: false, error: 'Partie en cours' };
     if (room.players.length >= 4) return { success: false, error: 'Salle pleine' };
 
     const playerId = socket.id;
-    room.players.push({ id: playerId, name, isBot: !isHuman, ready: false });
+    room.players.push({ id: playerId, name: String(name).trim(), isBot: !isHuman, ready: false });
     socket.join(roomId.toString());
 
     if (!room.waitStartTime) {
