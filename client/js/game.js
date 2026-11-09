@@ -441,4 +441,5 @@ function updateHandCounts() {
 }
 
 // Initialize (show login screen; rooms loaded after login)
+showScreen('login');
 ;
