@@ -1,5 +1,5 @@
 {
-  "name": "dame-pique",
+  "name": "dame-de-pique",
   "version": "1.0.0",
   "description": "Jeu de carte Dame de Pique (Hearts) en client-serveur",
   "main": "server/index.js",
