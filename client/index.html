@@ -8,10 +8,24 @@
 </head>
 <body>
   <div id="app">
-    <!-- Écran d'accueil -->
-    <div id="screen-home" class="screen active">
+    <!-- Écran de connexion -->
+    <div id="screen-login" class="screen active">
       <div class="header">
         <h1>Dame de Pique</h1>
+      </div>
+      <div class="content login-content">
+        <p class="subtitle">Entrez votre surnom pour jouer</p>
+        <input type="text" id="input-name" class="input-name" placeholder="Votre surnom" maxlength="20" autocomplete="off">
+        <button id="btn-login" class="btn-primary">Continuer</button>
+        <p id="login-error" class="hint hidden" style="color:#ff6b6b;margin-top:10px;">Un surnom est requis.</p>
+      </div>
+    </div>
+
+    <!-- Écran d'accueil (salles) -->
+    <div id="screen-home" class="screen">
+      <div class="header">
+        <h1>Dame de Pique</h1>
+        <p id="welcome-name" class="subtitle"></p>
       </div>
       <div class="content">
         <p class="subtitle">Sélectionnez une salle d'attente</p>

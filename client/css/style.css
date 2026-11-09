@@ -103,6 +103,32 @@ body {
   margin-bottom: 20px;
 }
 
+.login-content {
+  max-width: 320px;
+  margin: 40px auto;
+  text-align: center;
+}
+
+.input-name {
+  width: 100%;
+  padding: 14px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+  font-size: 1.1rem;
+  margin-bottom: 15px;
+  outline: none;
+}
+
+.input-name::placeholder {
+  color: rgba(255,255,255,0.6);
+}
+
+.input-name:focus {
+  border-color: #ffd700;
+}
+
 .room-card {
   background: rgba(255,255,255,0.1);
   border: 2px solid rgba(255,255,255,0.3);

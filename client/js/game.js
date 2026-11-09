@@ -9,6 +9,7 @@ let selectedPassCards = [];
 let selectedCardId = null;
 
 const screens = {
+  login: 'screen-login',
   home: 'screen-home',
   waiting: 'screen-waiting',
   pass: 'screen-pass',
@@ -67,32 +68,44 @@ function renderHand(containerId, cards, selectedIds = [], clickable = true, onCl
   }
 }
 
+// ========== Login ==========
+function doLogin() {
+  const input = document.getElementById('input-name');
+  const name = input.value.trim();
+  const error = document.getElementById('login-error');
+  if (!name) {
+    error.classList.remove('hidden');
+    input.focus();
+    return;
+  }
+  error.classList.add('hidden');
+  myName = name;
+  myIsHuman = true;
+  document.getElementById('welcome-name').textContent = `Bienvenue, ${myName}`;
+  showScreen('home');
+  loadRooms();
+}
+
+document.getElementById('btn-login').onclick = doLogin;
+document.getElementById('input-name').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') doLogin();
+});
+
 // ========== Home ==========
 async function loadRooms() {
   socket.emit('getRooms');
 }
 
 socket.on('roomsList', (rooms) => {
-  const grid = document.getElementById('rooms-grid');
-  grid.innerHTML = rooms.map(r => `
-    <div class="room-card ${r.playerCount >= 4 || r.started ? 'full' : ''}" onclick="joinRoom(${r.id})">
-      <h3>Salle ${r.id}</h3>
-      <p>${r.playerCount}/4 joueurs</p>
-      ${r.started ? '<p style="color:#ff6b6b">Partie en cours</p>' : ''}
-      <p style="font-size:0.8rem; opacity:0.7">${Math.ceil(r.waitRemaining/60)} min restante</p>
-    </div>
-  `).join('');
+  // rooms are static buttons; kept for future dynamic state
 });
 
 window.joinRoom = function(roomId) {
-  const name = prompt('Entrez votre pseudo pour rejoindre la salle :');
-  if (!name || name.trim() === '') {
-    alert('Un pseudo est requis pour entrer dans une salle.');
+  if (!myName) {
+    showScreen('login');
     return;
   }
-  myName = name.trim();
   myPlayerId = null;
-  myIsHuman = true;
   socket.emit('joinRoom', { roomId, name: myName, isHuman: true });
 };
 
@@ -427,5 +440,5 @@ function updateHandCounts() {
   });
 }
 
-// Initialize
-loadRooms();
+// Initialize (show login screen; rooms loaded after login)
+;
