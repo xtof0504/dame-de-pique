@@ -19,8 +19,12 @@ const screens = {
 };
 
 function showScreen(name) {
-  Object.values(screens).forEach(s => document.getElementById(s).classList.remove('active'));
-  document.getElementById(screens[name]).classList.add('active');
+  Object.values(screens).forEach(s => {
+    const el = document.getElementById(s);
+    if (el) el.classList.remove('active');
+  });
+  const target = document.getElementById(screens[name]);
+  if (target) target.classList.add('active');
 }
 
 function suitClass(card) {
@@ -71,25 +75,30 @@ function renderHand(containerId, cards, selectedIds = [], clickable = true, onCl
 // ========== Login ==========
 function doLogin() {
   const input = document.getElementById('input-name');
-  const name = input.value.trim();
+  const name = (input.value || '').trim();
   const error = document.getElementById('login-error');
   if (!name) {
-    error.classList.remove('hidden');
-    input.focus();
+    if (error) error.classList.remove('hidden');
+    if (input) input.focus();
     return;
   }
-  error.classList.add('hidden');
+  if (error) error.classList.add('hidden');
   myName = name;
   myIsHuman = true;
-  document.getElementById('welcome-name').textContent = `Bienvenue, ${myName}`;
+  const welcome = document.getElementById('welcome-name');
+  if (welcome) welcome.textContent = `Bienvenue, ${myName}`;
   showScreen('home');
-  loadRooms();
+  if (typeof loadRooms === 'function') loadRooms();
 }
 
-document.getElementById('btn-login').onclick = doLogin;
-document.getElementById('input-name').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') doLogin();
-});
+function initLogin() {
+  const btn = document.getElementById('btn-login');
+  const input = document.getElementById('input-name');
+  if (btn) btn.onclick = doLogin;
+  if (input) input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') doLogin();
+  });
+}
 
 // ========== Home ==========
 async function loadRooms() {
@@ -441,5 +450,10 @@ function updateHandCounts() {
 }
 
 // Initialize (show login screen; rooms loaded after login)
-showScreen('login');
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => { initLogin(); showScreen('login'); });
+} else {
+  initLogin();
+  showScreen('login');
+}
 ;
