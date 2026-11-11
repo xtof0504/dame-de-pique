@@ -607,22 +607,27 @@ function completePass(room) {
   const dir = game.passingDirection;
 
   for (let i = 0; i < n; i++) {
-    const giver = order[i].id;
+    const giverId = order[i].id;
     let receiverIdx;
     if (dir === 'left') receiverIdx = (i + 1) % n;
     else if (dir === 'right') receiverIdx = (i - 1 + n) % n;
     else if (dir === 'across') receiverIdx = (i + 2) % n;
     else receiverIdx = (i + 1) % n;
-    const receiver = order[receiverIdx].id;
-    const cards = game.passedCards[giver] || [];
-    const rPlayer = room.players.find(p => p.id === receiver);
-    if (rPlayer) {
+    const receiverId = order[receiverIdx].id;
+    const cards = game.passedCards[giverId] || [];
+
+    const giver = room.players.find(p => p.id === giverId);
+    if (giver) {
       for (const c of cards) {
-        const idx = rPlayer.hand.findIndex(h => sameCard(h, c));
-        if (idx !== -1) rPlayer.hand.splice(idx, 1);
+        const idx = giver.hand.findIndex(h => sameCard(h, c));
+        if (idx !== -1) giver.hand.splice(idx, 1);
       }
-      rPlayer.hand.push(...cards);
-      rPlayer.hand.sort(sortCards);
+    }
+
+    const receiver = room.players.find(p => p.id === receiverId);
+    if (receiver) {
+      receiver.hand.push(...cards);
+      receiver.hand.sort(sortCards);
     }
   }
 
