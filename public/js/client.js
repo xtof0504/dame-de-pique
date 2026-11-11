@@ -6,6 +6,7 @@ let myPlayerId = null;
 let myHand = [];
 let gameState = null;
 let selectedCard = null;
+let pendingCurrentTurn = null;
 
 // Affichage des erreurs JS directement sur la page
 window.onerror = (msg, url, line) => {
@@ -288,7 +289,7 @@ socket.on('pass_complete', (data) => {
   renderHand(myHand);
   hidePassControls();
 
-  // Surligner brièvement les cartes reçues lors du passage
+  // Détecter et surligner les cartes reçues lors du passage
   const oldCounts = {};
   for (const c of oldHand) {
     const key = c.suit + ':' + c.rank;
@@ -308,26 +309,26 @@ socket.on('pass_complete', (data) => {
     const el = document.querySelector('.game-card[data-idx="' + idx + '"]');
     if (el) el.classList.add('received');
   });
-  if (receivedIdxs.length > 0) {
-    setText('game-msg', 'Vous avez reçu ' + receivedIdxs.length + ' carte(s).');
-    setTimeout(() => {
-      receivedIdxs.forEach((idx) => {
-        const el = document.querySelector('.game-card[data-idx="' + idx + '"]');
-        if (el) el.classList.remove('received');
-      });
-    }, 2000);
-  }
 
-  if (data.currentTurn === myPlayerId) {
-    setText('turn-name', 'C\'est votre tour');
-    setText('game-msg', 'Jouez une carte.');
-    enableHand();
-    showPlayButton();
-  } else {
-    setText('turn-name', 'Tour adverse');
-    setText('game-msg', 'En attente...');
+  if (receivedIdxs.length > 0) {
+    pendingCurrentTurn = data.currentTurn;
+    setText('game-msg', 'Vous avez reçu ' + receivedIdxs.length + ' carte(s). Cliquez sur "J\'ai vu les cartes" pour continuer.');
+    showPassValidatedButton();
     disableHand();
     hidePlayButton();
+  } else {
+    setText('game-msg', 'Passage terminé.');
+    if (data.currentTurn === myPlayerId) {
+      setText('turn-name', 'C\'est votre tour');
+      setText('game-msg', 'Jouez une carte.');
+      enableHand();
+      showPlayButton();
+    } else {
+      setText('turn-name', 'Tour adverse');
+      setText('game-msg', 'En attente...');
+      disableHand();
+      hidePlayButton();
+    }
   }
 });
 
@@ -503,6 +504,33 @@ function showPassControls() {
 
 function hidePassControls() {
   document.getElementById('game-controls').innerHTML = '';
+}
+
+function showPassValidatedButton() {
+  const controls = document.getElementById('game-controls');
+  controls.innerHTML = '<button id="btn-pass-validated" class="btn btn-success">J\'ai vu les cartes</button>';
+  document.getElementById('btn-pass-validated').addEventListener('click', validatePassReceived);
+}
+
+function hidePassValidatedButton() {
+  const btn = document.getElementById('btn-pass-validated');
+  if (btn) btn.remove();
+}
+
+function validatePassReceived() {
+  document.querySelectorAll('.game-card.received').forEach((el) => el.classList.remove('received'));
+  hidePassValidatedButton();
+  if (pendingCurrentTurn === myPlayerId) {
+    setText('turn-name', 'C\'est votre tour');
+    setText('game-msg', 'Jouez une carte.');
+    enableHand();
+    showPlayButton();
+  } else {
+    setText('turn-name', 'Tour adverse');
+    setText('game-msg', 'En attente...');
+    disableHand();
+    hidePlayButton();
+  }
 }
 
 let passSelection = [];
