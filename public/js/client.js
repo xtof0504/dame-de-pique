@@ -74,14 +74,24 @@ document.head.appendChild(receivedStyle);
 const nicknameInput = document.getElementById('nickname');
 const btnContinue = document.getElementById('btn-continue');
 
+// Charger le surnom précédent
+const savedNickname = localStorage.getItem('damepique_nickname');
+if (savedNickname) {
+  nicknameInput.value = savedNickname;
+  nickname = savedNickname;
+  btnContinue.disabled = savedNickname.length === 0;
+}
+
 nicknameInput.addEventListener('input', () => {
   nickname = nicknameInput.value.trim();
   btnContinue.disabled = nickname.length === 0;
+  localStorage.setItem('damepique_nickname', nicknameInput.value.trim());
 });
 
 btnContinue.addEventListener('click', () => {
   nickname = nicknameInput.value.trim();
   if (!nickname) return;
+  localStorage.setItem('damepique_nickname', nickname);
   show(screens.rooms);
   loadRooms();
 });
@@ -107,7 +117,9 @@ socket.on('rooms_list', (rooms) => {
   rooms.forEach((room) => {
     const btn = document.createElement('button');
     btn.className = 'room-btn';
-    btn.textContent = 'Salle ' + room.id.replace('room-', '');
+    const names = (room.playerNames || []).join(', ');
+    btn.textContent = 'Salle ' + room.id.replace('room-', '') + (names ? ' - ' + names : '');
+    btn.title = names ? 'Joueurs : ' + names : 'Salle vide';
     if (room.started) {
       btn.classList.add('started');
       btn.disabled = true;
@@ -440,7 +452,7 @@ function renderTrick(cards) {
     placeholder.style.display = 'none';
     cards.forEach((tc) => {
       const div = document.createElement('div');
-      div.className = 'trick-card';
+      div.className = 'trick-card ' + (tc.card.suit === 'hearts' || tc.card.suit === 'diamonds' ? 'red' : 'black');
       div.innerHTML = renderCardHtml(tc.card, false);
       container.appendChild(div);
     });

@@ -122,6 +122,7 @@ io.on('connection', (socket) => {
       id: r.id,
       players: r.players.length,
       started: r.started,
+      playerNames: r.players.map(p => p.name),
     }));
     socket.emit('rooms_list', list);
   });
@@ -355,10 +356,12 @@ function startGame(roomId) {
 
   const humans = room.players.filter(p => !p.isBot);
   const botsNeeded = MAX_PLAYERS - humans.length;
+  const botNames = ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve', 'Frank', 'Grace', 'Hugo', 'Iris', 'Jack'];
+  let botIdx = 0;
   for (let i = 0; i < botsNeeded; i++) {
     const bot = {
       id: 'bot-' + Date.now() + '-' + i,
-      name: 'Bot ' + (i + 1),
+      name: botNames[botIdx % botNames.length],
       isBot: true,
       ready: true,
       hand: [],
@@ -368,6 +371,7 @@ function startGame(roomId) {
       queenSpades: false,
     };
     room.players.push(bot);
+    botIdx++;
   }
 
   shufflePlayers(room);
