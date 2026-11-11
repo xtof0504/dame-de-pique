@@ -287,7 +287,7 @@ io.on('connection', (socket) => {
       // Faire passer automatiquement les bots restants
       const remainingBots = room.players.filter(p => !game.passedCards[p.id] && p.isBot);
       for (const bot of remainingBots) {
-        const passCards = bot.hand.slice(0, 3);
+        const passCards = selectPassCards(bot.hand);
         game.passedCards[bot.id] = passCards;
         for (const c of passCards) {
           const idx = bot.hand.findIndex(h => sameCard(h, c));
@@ -682,6 +682,70 @@ function completePass(room) {
   // Le timer est démarré quand tous les joueurs ont validé (socket pass_validated)
 }
 
+function cardSortKey(c) {
+  let score = 0;
+  if (c.suit === 'spades' && c.rank === 'Q') score += 100;
+  if (c.suit === 'hearts') {
+    score += 50;
+    score += rankValue[c.rank] * 2;
+  }
+  score += rankValue[c.rank];
+  if (c.suit === 'spades' && rankValue[c.rank] >= 11) score += 20;
+  return score;
+}
+
+function selectPassCards(hand) {
+  return [...hand].sort((a, b) => cardSortKey(b) - cardSortKey(a)).slice(0, 3);
+}
+
+function selectPlayCard(hand, ledSuit, heartsBroken, trickCards) {
+  const playable = hand.filter(c => isValidPlay(hand, c, ledSuit, heartsBroken));
+  if (playable.length === 0) return hand[0] || null;
+
+  if (ledSuit === null) {
+    let candidates = playable;
+    if (!heartsBroken) {
+      const nonHearts = playable.filter(c => c.suit !== 'hearts');
+      if (nonHearts.length > 0) candidates = nonHearts;
+    }
+    const noQueen = candidates.filter(c => !(c.suit === 'spades' && c.rank === 'Q'));
+    if (noQueen.length > 0) candidates = noQueen;
+    candidates.sort((a, b) => rankValue[a.rank] - rankValue[b.rank]);
+    return candidates[0];
+  }
+
+  const sameSuit = playable.filter(c => c.suit === ledSuit);
+  if (sameSuit.length > 0) {
+    const bestOnTable = trickCards
+      .filter(tc => tc.card.suit === ledSuit)
+      .map(tc => rankValue[tc.card.rank]);
+    const maxTable = bestOnTable.length > 0 ? Math.max(...bestOnTable) : 0;
+
+    const canAvoid = sameSuit.filter(c => rankValue[c.rank] < maxTable);
+    if (canAvoid.length > 0) {
+      const noQueen = canAvoid.filter(c => !(c.suit === 'spades' && c.rank === 'Q'));
+      if (noQueen.length > 0) {
+        noQueen.sort((a, b) => rankValue[b.rank] - rankValue[a.rank]);
+        return noQueen[0];
+      }
+      canAvoid.sort((a, b) => rankValue[b.rank] - rankValue[a.rank]);
+      return canAvoid[0];
+    }
+    sameSuit.sort((a, b) => rankValue[a.rank] - rankValue[b.rank]);
+    const noQueen = sameSuit.filter(c => !(c.suit === 'spades' && c.rank === 'Q'));
+    if (noQueen.length > 0) return noQueen[0];
+    return sameSuit[0];
+  }
+
+  const noQueen = playable.filter(c => !(c.suit === 'spades' && c.rank === 'Q'));
+  if (noQueen.length > 0) {
+    noQueen.sort((a, b) => rankValue[a.rank] - rankValue[b.rank]);
+    return noQueen[0];
+  }
+  playable.sort((a, b) => rankValue[a.rank] - rankValue[b.rank]);
+  return playable[0];
+}
+
 function startTurnTimer(room) {
   resetTurnTimers(room);
   if (!room.started || !room.game) return;
@@ -696,7 +760,7 @@ function startTurnTimer(room) {
   room.turnTimer = setTimeout(() => {
     if (!room.game || room.game.turn !== current.id) return;
     const playable = current.hand.filter(c => isValidPlay(current.hand, c, game.trickCards.length > 0 ? game.trickCards[0].card.suit : null, game.heartsBroken));
-    const card = playable.length ? playable[0] : (current.hand[0] || null);
+    const card = selectPlayCard(current.hand, game.trickCards.length > 0 ? game.trickCards[0].card.suit : null, game.heartsBroken, game.trickCards);
     if (card) playCardLogic(room, current.id, card);
   }, 60000);
 }
@@ -708,16 +772,14 @@ function botPlay(room) {
   if (!current || !current.isBot) return;
 
   if (game.phase === 'passing') {
-    const hand = current.hand;
-    const passCards = hand.slice(0, 3);
+    const passCards = selectPassCards(current.hand);
     socketEmitTo(current.id, 'bot_pass', { cards: passCards });
     playCardLogicPass(room, current.id, passCards);
     return;
   }
 
   const ledSuit = game.trickCards.length > 0 ? game.trickCards[0].card.suit : null;
-  const playable = current.hand.filter(c => isValidPlay(current.hand, c, ledSuit, game.heartsBroken));
-  const card = playable.length ? playable[0] : (current.hand[0] || null);
+  const card = selectPlayCard(current.hand, ledSuit, game.heartsBroken, game.trickCards);
   if (card) playCardLogic(room, current.id, card);
 }
 
