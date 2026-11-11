@@ -302,6 +302,12 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('leave_room', ({ roomId }) => {
+    const room = rooms[roomId];
+    if (!room) return;
+    leaveRoomInternal(socket.id, roomId);
+  });
+
   socket.on('disconnect', () => {
     const room = getRoom(socket.id);
     if (room) leaveRoomInternal(socket.id, room.id);

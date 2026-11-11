@@ -11,6 +11,7 @@ let roomsData = [];
 let turnTimer = null;
 let turnTimeLeft = 0;
 let playersById = {};
+let showingTrickWinner = false;
 
 // Affichage des erreurs JS directement sur la page
 window.onerror = (msg, url, line) => {
@@ -229,14 +230,14 @@ function updateWaitingActions(hostId, started) {
   };
 
   btnLeave.onclick = () => {
-    socket.disconnect();
+    socket.emit('leave_room', { roomId: currentRoomId });
     show(screens.rooms);
     currentRoomId = null;
   };
 }
 
 document.getElementById('btn-leave-waiting').addEventListener('click', () => {
-  socket.disconnect();
+  socket.emit('leave_room', { roomId: currentRoomId });
   show(screens.rooms);
   currentRoomId = null;
 });
@@ -365,6 +366,7 @@ socket.on('card_played', (data) => {
 
 socket.on('turn_changed', (data) => {
   stopTurnTimer();
+  if (showingTrickWinner) return;
   if (data.turn === myPlayerId) {
     setText('turn-name', 'C\'est votre tour');
     setText('game-msg', 'Jouez une carte.');
@@ -382,11 +384,14 @@ socket.on('turn_changed', (data) => {
 });
 
 socket.on('trick_ended', (data) => {
+  if (data.players) data.players.forEach(p => { playersById[p.id] = p; });
   const p = findPlayer(data.winner);
   const winnerName = p ? p.name : 'Joueur ' + data.winner;
+  showingTrickWinner = true;
   setText('game-msg', 'Plis terminé. Gagnant : ' + winnerName);
   setScoresRound(data.roundScores);
   setTimeout(() => {
+    showingTrickWinner = false;
     if (data.winner === myPlayerId) setText('game-msg', 'Vous gagnez le pli !');
   }, 3000);
 });
