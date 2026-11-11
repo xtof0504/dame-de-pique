@@ -230,6 +230,15 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // Premier coup du round: le joueur doit ouvrir avec le 2 de trèfle s'il le détient
+    if (game.trickCards.length === 0) {
+      const hasTwoClubs = player.hand.some(c => c.suit === 'clubs' && c.rank === '2');
+      if (hasTwoClubs && !(card.suit === 'clubs' && card.rank === '2')) {
+        socket.emit('error_msg', { message: 'Vous devez ouvrir le pli avec le 2 de trèfle.' });
+        return;
+      }
+    }
+
     const playedCard = player.hand.splice(cardIdx, 1)[0];
     game.trickCards.push({ playerId: socket.id, card: playedCard });
     if (playedCard.suit === 'hearts') game.heartsBroken = true;
@@ -720,6 +729,14 @@ function playCardLogic(room, socketId, card) {
   if (cardIdx === -1) return;
   const ledSuit = game.trickCards.length > 0 ? game.trickCards[0].card.suit : null;
   if (!isValidPlay(player.hand, card, ledSuit, game.heartsBroken)) return;
+  // Premier coup du round: le joueur doit ouvrir avec le 2 de trèfle s'il le détient
+  if (game.trickCards.length === 0) {
+    const hasTwoClubs = player.hand.some(c => c.suit === 'clubs' && c.rank === '2');
+    if (hasTwoClubs && !(card.suit === 'clubs' && card.rank === '2')) {
+      socketEmitTo(socketId, 'error_msg', { message: 'Vous devez ouvrir le pli avec le 2 de trèfle.' });
+      return;
+    }
+  }
   const playedCard = player.hand.splice(cardIdx, 1)[0];
   game.trickCards.push({ playerId: socketId, card: playedCard });
   if (playedCard.suit === 'hearts') game.heartsBroken = true;

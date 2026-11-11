@@ -12,6 +12,7 @@ let turnTimer = null;
 let turnTimeLeft = 0;
 let playersById = {};
 let showingTrickWinner = false;
+let playerSeats = {};
 
 // Affichage des erreurs JS directement sur la page
 window.onerror = (msg, url, line) => {
@@ -396,10 +397,21 @@ socket.on('trick_ended', (data) => {
   setText('game-msg', 'Plis terminé. Gagnant : ' + winnerName);
   setScoresRound(data.roundScores);
   gameState.ledSuit = null;
+
+  // Les cartes du pli partent vers le siège du gagnant
+  const winnerSeat = playerSeats[data.winner] || 'bottom';
+  document.querySelectorAll('#trick-cards .trick-card').forEach((el) => {
+    el.classList.add('trick-won-' + winnerSeat);
+  });
+
   setTimeout(() => {
     showingTrickWinner = false;
+    const container = document.getElementById('trick-cards');
+    container.innerHTML = '';
+    const placeholder = document.getElementById('trick-area').querySelector('.trick-placeholder');
+    if (placeholder) placeholder.style.display = 'block';
     if (data.winner === myPlayerId) setText('game-msg', 'Vous gagnez le pli !');
-  }, 3000);
+  }, 700);
 });
 
 socket.on('round_ended', (data) => {
@@ -421,6 +433,7 @@ function renderGame(data) {
   setText('round-badge', 'Round ' + (data.round || 1));
   setText('turn-name', 'Vous');
   renderScores(data.scores || {});
+  playerSeats = { [myPlayerId]: 'bottom' };
   renderOpponents(data.players);
   renderTrick([]);
 }
@@ -469,13 +482,14 @@ function setScoresRound(roundScores) {
 }
 
 function renderOpponents(players) {
+  const seatOrder = ['bottom', 'left', 'top', 'right'];
+  const myIdx = players.findIndex(p => p.id === myPlayerId);
   const seats = { top: null, left: null, right: null };
-  let seatIdx = 0;
-  const seatOrder = ['top', 'left', 'right'];
-  players.forEach((p) => {
+  players.forEach((p, idx) => {
     if (p.id === myPlayerId) return;
-    const seat = seatOrder[seatIdx % seatOrder.length];
-    seatIdx++;
+    const relativeIdx = (idx - myIdx + 4) % 4;
+    const seat = seatOrder[relativeIdx];
+    playerSeats[p.id] = seat;
     const nameEl = document.getElementById('name-' + seat);
     const stackEl = document.getElementById('stack-' + seat);
     const countEl = document.getElementById('count-' + seat);
@@ -485,7 +499,7 @@ function renderOpponents(players) {
     if (seats[seat] === null) seats[seat] = p;
   });
   // Fill empty seats
-  seatOrder.forEach((seat) => {
+  ['top', 'left', 'right'].forEach((seat) => {
     if (!seats[seat]) {
       document.getElementById('name-' + seat).textContent = '';
       document.getElementById('stack-' + seat).textContent = '0';
@@ -503,8 +517,9 @@ function renderTrick(cards) {
   } else {
     placeholder.style.display = 'none';
     cards.forEach((tc) => {
+      const seat = playerSeats[tc.playerId] || 'bottom';
       const div = document.createElement('div');
-      div.className = 'trick-card ' + (tc.card.suit === 'hearts' || tc.card.suit === 'diamonds' ? 'red' : 'black');
+      div.className = 'trick-card ' + (tc.card.suit === 'hearts' || tc.card.suit === 'diamonds' ? 'red' : 'black') + ' seat-' + seat;
       div.innerHTML = renderCardHtml(tc.card, true);
       container.appendChild(div);
     });
@@ -594,6 +609,13 @@ function isValidPlayClient(card, ledSuit, heartsBroken, hand) {
   const hasLed = ledSuit ? hand.some(c => c.suit === ledSuit) : false;
   if (ledSuit && hasLed) {
     return card.suit === ledSuit;
+  }
+  // Premier coup du round: le 2 de trèfle est obligatoire si détenu
+  if (ledSuit === null) {
+    const hasTwoClubs = hand.some(c => c.suit === 'clubs' && c.rank === '2');
+    if (hasTwoClubs && !(card.suit === 'clubs' && card.rank === '2')) {
+      return false;
+    }
   }
   if (ledSuit === 'hearts' && !heartsBroken) {
     const onlyHearts = hand.every(c => c.suit === 'hearts');
@@ -725,10 +747,7 @@ function playCard() {
 }
 
 function showPlayButton() {
-  const controls = document.getElementById('game-controls');
-  if (document.getElementById('btn-play')) return;
-  controls.innerHTML = '<button id="btn-play" class="btn btn-primary">Jouer la carte sélectionnée</button>';
-  document.getElementById('btn-play').addEventListener('click', playCard);
+  // Aucun bouton en bas: la carte se joue en cliquant directement dessus.
 }
 
 function hidePlayButton() {

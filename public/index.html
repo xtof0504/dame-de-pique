@@ -62,12 +62,16 @@
     .score-box { flex: 1; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px; text-align: center; }
     .score-name { font-size: 12px; color: var(--secondary); margin-bottom: 4px; }
     .score-value { font-size: 18px; font-weight: 800; color: var(--text); }
-    .trick-area { height: 360px; width: 300px; display: flex; align-items: center; justify-content: center; margin-bottom: 12px; border: 2px dashed #e5e7eb; border-radius: 12px; background: #228B22; }
+    .trick-area { display: flex; align-items: center; justify-content: center; margin-bottom: 12px; }
     .trick-cards { display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 100px 100px 100px; gap: 12px; width: 260px; height: 324px; justify-items: center; align-items: center; }
-    .trick-card:nth-child(1) { grid-area: 1 / 2; }
-    .trick-card:nth-child(2) { grid-area: 2 / 1; }
-    .trick-card:nth-child(3) { grid-area: 2 / 3; }
-    .trick-card:nth-child(4) { grid-area: 3 / 2; }
+    .trick-card.seat-top { grid-area: 1 / 2; }
+    .trick-card.seat-left { grid-area: 2 / 1; }
+    .trick-card.seat-right { grid-area: 2 / 3; }
+    .trick-card.seat-bottom { grid-area: 3 / 2; }
+    .trick-won-top { transition: transform 0.7s ease; transform: translateY(-260px) scale(0.9); z-index: 30; }
+    .trick-won-left { transition: transform 0.7s ease; transform: translateX(-260px) scale(0.9); z-index: 30; }
+    .trick-won-right { transition: transform 0.7s ease; transform: translateX(260px) scale(0.9); z-index: 30; }
+    .trick-won-bottom { transition: transform 0.7s ease; transform: translateY(260px) scale(0.9); z-index: 30; }
     .trick-placeholder { font-size: 13px; color: var(--secondary); }
     .players-hands { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding: 0 4px; }
     .opponent-hand { display: flex; flex-direction: column; align-items: center; gap: 4px; }
@@ -85,7 +89,7 @@
     .trick-card .card-img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .card-back { width: 100%; height: 100%; background: linear-gradient(135deg, #1e3a8a 25%, #1e40af 25%, #1e40af 50%, #2563eb 50%, #2563eb 75%, #1e3a8a 75%); background-size: 16px 16px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 800; border: 2px solid #1e3a8a; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
     .game-msg { min-height: 24px; font-size: 14px; font-weight: 600; text-align: center; margin-bottom: 12px; color: var(--primary); }
-    .game-controls { display: flex; flex-direction: column; gap: 8px; }
+    .game-controls { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
     .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center; }
     .modal { position: fixed; inset: 0; z-index: 1010; display: flex; align-items: center; justify-content: center; }
     .modal.hidden, .overlay.hidden { display: none; }
@@ -100,7 +104,7 @@
     .game-card.disabled { opacity: 0.5; cursor: not-allowed; }
 
     /* Table layout */
-    .table-layout { display: grid; grid-template-rows: 80px 1fr 120px; grid-template-columns: 120px 1fr 120px; gap: 4px; height: calc(100vh - 260px); }
+    .table-layout { display: grid; grid-template-rows: 80px 1fr 240px; grid-template-columns: 120px 1fr 120px; gap: 4px; height: calc(100vh - 260px); }
     .seat { display: flex; flex-direction: column; align-items: center; justify-content: center; }
     .seat.top-seat { grid-row: 1; grid-column: 2; }
     .seat.left-seat { grid-row: 2; grid-column: 1; margin-right: 124px; }
@@ -199,11 +203,11 @@
             <div class="my-hand">
               <h3>Votre main</h3>
               <div class="hand-cards" id="hand-cards"></div>
+              <div class="game-controls" id="game-controls"></div>
             </div>
           </div>
         </div>
         <div class="game-msg" id="game-msg"></div>
-        <div class="game-controls" id="game-controls"></div>
       </div>
   </div>
 
