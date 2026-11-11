@@ -47,9 +47,14 @@ function setText(id, text) {
   if (el) el.textContent = text;
 }
 
+function setHTML(id, html) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = html;
+}
+
 function showModal(title, body) {
   setText('modal-title', title);
-  setText('modal-body', body);
+  setHTML('modal-body', body);
   document.getElementById('overlay').classList.remove('hidden');
   document.getElementById('modal').classList.remove('hidden');
 }
@@ -440,7 +445,7 @@ function showRoundScoresModal(roundScores, gameOver, finalScores) {
   }
   html += '</table>';
   setText('modal-title', title);
-  setText('modal-body', html);
+  setHTML('modal-body', html);
   document.getElementById('overlay').classList.remove('hidden');
   document.getElementById('modal').classList.remove('hidden');
 }
