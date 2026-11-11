@@ -433,6 +433,13 @@ socket.on('game_over', (data) => {
   }
   html += '</table>';
   showModal('Partie terminée', html);
+  document.getElementById('modal-ok').onclick = () => {
+    hideModal();
+    socket.emit('leave_room', { roomId: currentRoomId });
+    show(screens.rooms);
+    currentRoomId = null;
+    loadRooms();
+  };
 });
 
 function renderGame(data) {
