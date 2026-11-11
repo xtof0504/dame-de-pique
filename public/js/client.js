@@ -518,6 +518,7 @@ function hidePassValidatedButton() {
 }
 
 function validatePassReceived() {
+  socket.emit('pass_validated', { roomId: currentRoomId });
   document.querySelectorAll('.game-card.received').forEach((el) => el.classList.remove('received'));
   hidePassValidatedButton();
   if (pendingCurrentTurn === myPlayerId) {

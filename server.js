@@ -290,6 +290,17 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('pass_validated', ({ roomId }) => {
+    const room = rooms[roomId];
+    if (!room || !room.game) return;
+    room.game.passValidations[socket.id] = true;
+    const humans = room.players.filter(p => !p.isBot);
+    const allValidated = humans.every(p => room.game.passValidations[p.id]);
+    if (allValidated) {
+      startTurnTimer(room);
+    }
+  });
+
   socket.on('disconnect', () => {
     const room = getRoom(socket.id);
     if (room) leaveRoomInternal(socket.id, room.id);
@@ -431,6 +442,7 @@ function initGameState(room) {
     passingDirection: 'left',
     passedCards: {},
     passPhase: true,
+    passValidations: {},
     mustPass: {},
     round: 1,
     gameOver: false,
@@ -633,12 +645,13 @@ function completePass(room) {
 
   game.phase = 'playing';
   for (const p of room.players) game.mustPass[p.id] = false;
+  for (const p of room.players) game.passValidations[p.id] = false;
 
   broadcastRoom(room.id, 'pass_complete', {
     hands: room.players.reduce((acc, p) => { acc[p.id] = p.hand; return acc; }, {}),
     currentTurn: game.turn,
   });
-  startTurnTimer(room);
+  // Le timer est démarré quand tous les joueurs ont validé (socket pass_validated)
 }
 
 function startTurnTimer(room) {
