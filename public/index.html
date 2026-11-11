@@ -72,57 +72,14 @@
     .cards-stack { width: 48px; height: 68px; background: linear-gradient(135deg, #1e3a8a 25%, #1e40af 25%, #1e40af 50%, #2563eb 50%, #2563eb 75%, #1e3a8a 75%); background-size: 16px 16px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 800; border: 2px solid #1e3a8a; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
     .my-hand { margin-bottom: 16px; }
     .hand-cards { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; padding: 0 4px; }
-    .game-card { width: 62px; height: 90px; background: linear-gradient(145deg, #ffffff, #f3f4f6); border: 2px solid #374151; border-radius: 10px; display: flex; flex-direction: column; padding: 6px 4px; font-size: 14px; font-weight: 800; cursor: pointer; user-select: none; touch-action: manipulation; position: relative; box-shadow: 0 6px 12px rgba(0,0,0,0.25); overflow: hidden; }
-    .game-card.red .card-corner, .trick-card.red .card-corner,
-    .game-card.red .card-face-name, .trick-card.red .card-face-name,
-    .game-card.red .card-face-symbol, .trick-card.red .card-face-symbol,
-    .game-card.red .card-suit-big, .trick-card.red .card-suit-big {
-      color: #dc2626;
-    }
-    .game-card.black .card-corner, .trick-card.black .card-corner,
-    .game-card.black .card-face-name, .trick-card.black .card-face-name,
-    .game-card.black .card-face-symbol, .trick-card.black .card-face-symbol,
-    .game-card.black .card-suit-big, .trick-card.black .card-suit-big {
-      color: #111827;
-    }
-    .game-card .card-corner, .trick-card .card-corner {
-      position: absolute;
-      font-size: 11px;
-      font-weight: 800;
-      z-index: 2;
-    }
-    .game-card .card-corner.tl, .trick-card .card-corner.tl { top: 3px; left: 3px; }
-    .game-card .card-corner.tr, .trick-card .card-corner.tr { top: 3px; right: 3px; text-align: right; }
-    .game-card .card-corner.bl, .trick-card .card-corner.bl { bottom: 3px; left: 3px; }
-    .game-card .card-corner.br, .trick-card .card-corner.br { bottom: 3px; right: 3px; text-align: right; }
-    .game-card .card-corner.rotated, .trick-card .card-corner.rotated { transform: rotate(180deg); }
-    .game-card .card-center, .trick-card .card-center {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      text-align: center;
-      z-index: 1;
-      pointer-events: none;
-    }
-    .game-card .card-face-name, .trick-card .card-face-name {
-      font-size: 8px;
-      font-weight: 800;
-      color: #6b7280;
-      margin-bottom: 2px;
-      letter-spacing: 1px;
-    }
-    .game-card .card-face-symbol, .trick-card .card-face-symbol {
-      font-size: 34px;
-      opacity: 0.85;
-    }
-    .game-card .card-suit-big, .trick-card .card-suit-big {
-      font-size: 40px;
-      opacity: 0.85;
-    }
+    .game-card { width: 62px; height: 90px; background: #fff; border: 2px solid #374151; border-radius: 10px; position: relative; box-shadow: 0 6px 12px rgba(0,0,0,0.25); overflow: hidden; cursor: pointer; user-select: none; touch-action: manipulation; display: flex; align-items: center; justify-content: center; }
+    .game-card.red { } .game-card.black { }
+    .game-card .card-img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .game-card.selected { border-color: var(--primary); background: #dbeafe; transform: translateY(-10px) scale(1.02); z-index: 10; box-shadow: 0 8px 16px rgba(37,99,235,0.35); }
     .game-card.disabled { opacity: 0.5; cursor: not-allowed; }
-    .trick-card { width: 62px; height: 90px; background: linear-gradient(145deg, #ffffff, #f3f4f6); border: 2px solid #374151; border-radius: 10px; display: flex; flex-direction: column; padding: 6px 4px; font-size: 14px; font-weight: 800; box-shadow: 0 4px 8px rgba(0,0,0,0.2); position: relative; }
+    .trick-card { width: 62px; height: 90px; background: #fff; border: 2px solid #374151; border-radius: 10px; position: relative; box-shadow: 0 4px 8px rgba(0,0,0,0.2); display: flex; align-items: center; justify-content: center; }
+    .trick-card .card-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .card-back { width: 100%; height: 100%; background: linear-gradient(135deg, #1e3a8a 25%, #1e40af 25%, #1e40af 50%, #2563eb 50%, #2563eb 75%, #1e3a8a 75%); background-size: 16px 16px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 800; border: 2px solid #1e3a8a; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
     .game-msg { min-height: 24px; font-size: 14px; font-weight: 600; text-align: center; margin-bottom: 12px; color: var(--primary); }
     .game-controls { display: flex; flex-direction: column; gap: 8px; }
     .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center; }
@@ -203,7 +160,7 @@
           <div class="round-badge" id="round-badge">Round 1</div>
           <div id="turn-timer" class="turn-timer">--:--</div>
         </div>
-        <div class="scores" id="scores"></div>
+        <div class="scores hidden" id="scores"></div>
         <div class="table-layout">
           <div class="seat top-seat" id="seat-top">
             <div class="opponent-hand">
@@ -258,6 +215,6 @@
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
-<script src="js/client.js?v=19"></script>
+<script src="js/client.js?v=20"></script>
 </body>
 </html>
