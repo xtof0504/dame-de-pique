@@ -527,14 +527,27 @@ function renderCardHtml(card, isHand) {
     spades: '♠',
   }[card.suit];
   const faceNames = {
-    'J': { hearts: 'La Hire', diamonds: 'Hector', clubs: 'Ogier', spades: 'Lancelot' },
-    'Q': { hearts: 'Judith', diamonds: 'Rachel', clubs: 'Argine', spades: 'Pallas' },
-    'K': { hearts: 'Charlemagne', diamonds: 'César', clubs: 'Alexandre', spades: 'David' },
+    'J': { hearts: 'LA HIRE', diamonds: 'HECTOR', clubs: 'OGIER', spades: 'LANCELOT' },
+    'Q': { hearts: 'JUDITH', diamonds: 'RACHEL', clubs: 'ARGINE', spades: 'PALLAS' },
+    'K': { hearts: 'CHARLEMAGNE', diamonds: 'CÉSAR', clubs: 'ALEXANDRE', spades: 'DAVID' },
   };
   const isFace = ['K', 'Q', 'J'].includes(card.rank);
-  const centerName = isFace ? '<div class="face-name">' + faceNames[card.rank][card.suit] + '</div>' : '';
-  const centerSymbol = isFace ? '<div class="face-symbol">' + { K: '♔', Q: '♕', J: '♘' }[card.rank] + '</div>' : '';
-  return '<div class="rank-top">' + card.rank + suitSymbol + '</div>' + centerName + centerSymbol + '<div class="suit-big">' + suitSymbol + '</div>';
+  const faceSymbol = { K: '♔', Q: '♕', J: '♘' }[card.rank];
+
+  let html = '';
+  html += '<div class="card-corner tl">' + card.rank + suitSymbol + '</div>';
+  html += '<div class="card-corner tr">' + (isFace ? faceNames[card.rank][card.suit] : suitSymbol) + '</div>';
+  html += '<div class="card-center">';
+  if (isFace) {
+    html += '<div class="card-face-name">' + faceNames[card.rank][card.suit] + '</div>';
+    html += '<div class="card-face-symbol">' + faceSymbol + '</div>';
+  } else {
+    html += '<div class="card-suit-big">' + suitSymbol + '</div>';
+  }
+  html += '</div>';
+  html += '<div class="card-corner bl rotated">' + (isFace ? faceNames[card.rank][card.suit] : suitSymbol) + '</div>';
+  html += '<div class="card-corner br rotated">' + card.rank + suitSymbol + '</div>';
+  return html;
 }
 
 function selectCard(idx) {
