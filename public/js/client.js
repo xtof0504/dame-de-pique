@@ -7,6 +7,9 @@ let myHand = [];
 let gameState = null;
 let selectedCard = null;
 let pendingCurrentTurn = null;
+let roomsData = [];
+let turnTimer = null;
+let turnTimeLeft = 0;
 
 // Affichage des erreurs JS directement sur la page
 window.onerror = (msg, url, line) => {
@@ -112,14 +115,16 @@ function loadRooms() {
 }
 
 socket.on('rooms_list', (rooms) => {
+  roomsData = rooms;
   roomsGrid.innerHTML = '';
   const now = Date.now();
   rooms.forEach((room) => {
     const btn = document.createElement('button');
     btn.className = 'room-btn';
     const names = (room.playerNames || []).join(', ');
-    btn.textContent = 'Salle ' + room.id.replace('room-', '') + (names ? ' - ' + names : '');
-    btn.title = names ? 'Joueurs : ' + names : 'Salle vide';
+    const onlyBots = !room.hasHumans;
+    btn.textContent = 'Salle ' + room.id.replace('room-', '') + (onlyBots ? ' (libre)' : ' - ' + names);
+    btn.title = onlyBots ? 'Salle libre (que des bots)' : 'Joueurs : ' + names;
     if (room.started) {
       btn.classList.add('started');
       btn.disabled = true;
@@ -264,6 +269,7 @@ socket.on('game_started', (data) => {
   renderGame(data);
   renderHand(myHand);
   setText('game-msg', data.passingDirection !== 'none' ? 'Choisissez 3 cartes à passer.' : 'La partie commence.');
+  setPassDirection(data.passingDirection);
   if (data.passingDirection !== 'none') {
     showPassControls();
   } else {
@@ -285,6 +291,7 @@ socket.on('new_round', (data) => {
   gameState.round = data.round;
   gameState.heartsBroken = false;
   gameState.phase = 'passing';
+  setPassDirection(gameState.passingDirection);
   setText('round-badge', 'Round ' + data.round);
   myHand = data.hands[myPlayerId] || [];
   renderScores(data.scores);
@@ -296,6 +303,7 @@ socket.on('new_round', (data) => {
 
 socket.on('pass_complete', (data) => {
   gameState.phase = 'playing';
+  setPassDirection(gameState.passingDirection);
   const oldHand = myHand.slice();
   myHand = data.hands[myPlayerId] || [];
   renderHand(myHand);
@@ -349,6 +357,7 @@ socket.on('cards_passed', (data) => {
 });
 
 socket.on('card_played', (data) => {
+  stopTurnTimer();
   renderTrick(data.trickCards);
   gameState.heartsBroken = data.heartsBroken;
   if (data.playerId === myPlayerId) {
@@ -367,20 +376,27 @@ socket.on('card_played', (data) => {
 });
 
 socket.on('turn_changed', (data) => {
+  stopTurnTimer();
   if (data.turn === myPlayerId) {
     setText('turn-name', 'C\'est votre tour');
     setText('game-msg', 'Jouez une carte.');
     enableHand();
+    updatePlayableCards();
     showPlayButton();
+    startTurnTimerUI(20);
   } else {
     setText('turn-name', 'Tour adverse');
+    setText('game-msg', 'En attente...');
     disableHand();
     hidePlayButton();
+    document.querySelectorAll('.game-card').forEach((el) => el.classList.remove('playable', 'disabled'));
   }
 });
 
 socket.on('trick_ended', (data) => {
-  setText('game-msg', 'Plis terminé. Gagnant : joueur ' + data.winner);
+  const p = findPlayer(data.winner);
+  const winnerName = p ? p.name : 'Joueur ' + data.winner;
+  setText('game-msg', 'Plis terminé. Gagnant : ' + winnerName);
   setScoresRound(data.roundScores);
   setTimeout(() => {
     if (data.winner === myPlayerId) setText('game-msg', 'Vous gagnez le pli !');
@@ -390,8 +406,9 @@ socket.on('trick_ended', (data) => {
 socket.on('round_ended', (data) => {
   setText('game-msg', data.moonShot ? 'Lune renversée !' : 'Round terminé.');
   renderScores(data.scores);
+  showRoundScoresModal(data.roundScores, data.gameOver, data.scores);
   if (data.gameOver) {
-    showModal('Partie terminée', 'Scores finaux : ' + JSON.stringify(data.scores));
+    // le modal est déjà affiché par showRoundScoresModal
   }
 });
 
@@ -408,6 +425,15 @@ function renderGame(data) {
   renderTrick([]);
 }
 
+function findPlayer(pid) {
+  const room = Object.values(roomsData || {}).find(r => r.players && r.players.some(p => p.id === pid));
+  if (room) {
+    return room.players.find(p => p.id === pid);
+  }
+  // fallback: chercher dans les données de jeu connues
+  return null;
+}
+
 function renderScores(scores) {
   const container = document.getElementById('scores');
   container.innerHTML = '';
@@ -418,6 +444,26 @@ function renderScores(scores) {
     box.innerHTML = '<div class="score-name">' + escapeHtml(p ? p.name : 'Joueur') + '</div><div class="score-value">' + val + '</div>';
     container.appendChild(box);
   }
+}
+
+function showRoundScoresModal(roundScores, gameOver, finalScores) {
+  const title = gameOver ? 'Partie terminée - Scores finaux' : 'Scores du round';
+  let body = '';
+  if (gameOver) {
+    for (const [pid, val] of Object.entries(finalScores || {})) {
+      const p = findPlayer(pid);
+      body += '<div>' + escapeHtml(p ? p.name : 'Joueur') + ' : ' + val + ' points</div>';
+    }
+  } else {
+    for (const [pid, val] of Object.entries(roundScores || {})) {
+      const p = findPlayer(pid);
+      body += '<div>' + escapeHtml(p ? p.name : 'Joueur') + ' : ' + val + ' points</div>';
+    }
+  }
+  setText('modal-title', title);
+  setText('modal-body', body);
+  document.getElementById('overlay').classList.remove('hidden');
+  document.getElementById('modal').classList.remove('hidden');
 }
 
 function setScoresRound(roundScores) {
@@ -504,6 +550,95 @@ function disableHand() {
   document.querySelectorAll('.game-card').forEach((el) => el.classList.add('disabled'));
 }
 
+function setPassDirection(dir) {
+  const labels = { left: 'à gauche', right: 'à droite', across: 'en face', none: 'aucune' };
+  const el = document.getElementById('turn-timer');
+  el.textContent = 'Passe : ' + (labels[dir] || dir);
+  el.style.color = 'var(--secondary)';
+}
+
+function startTurnTimerUI(seconds) {
+  stopTurnTimer();
+  turnTimeLeft = seconds;
+  const el = document.getElementById('turn-timer');
+  el.textContent = turnTimeLeft + 's';
+  el.style.color = 'var(--danger)';
+  turnTimer = setInterval(() => {
+    turnTimeLeft--;
+    if (turnTimeLeft <= 0) {
+      el.textContent = '0s';
+      stopTurnTimer();
+    } else {
+      el.textContent = turnTimeLeft + 's';
+    }
+  }, 1000);
+}
+
+function stopTurnTimer() {
+  if (turnTimer) {
+    clearInterval(turnTimer);
+    turnTimer = null;
+  }
+}
+
+function isValidPlayClient(card, ledSuit, heartsBroken, hand) {
+  const hasLed = ledSuit ? hand.some(c => c.suit === ledSuit) : false;
+  if (ledSuit && hasLed) {
+    return card.suit === ledSuit;
+  }
+  if (ledSuit === 'hearts' && !heartsBroken) {
+    const onlyHearts = hand.every(c => c.suit === 'hearts');
+    if (!onlyHearts && card.suit === 'hearts') return false;
+  }
+  if (ledSuit === null && card.suit === 'hearts' && !heartsBroken) {
+    const onlyHearts = hand.every(c => c.suit === 'hearts');
+    if (!onlyHearts) return false;
+  }
+  return true;
+}
+
+function updatePlayableCards() {
+  if (!gameState) return;
+  const trickContainer = document.getElementById('trick-cards');
+  const firstCardEl = trickContainer.querySelector('.trick-card');
+  let ledSuit = null;
+  if (firstCardEl) {
+    const rankTop = firstCardEl.querySelector('.rank-top');
+    if (rankTop) {
+      const text = rankTop.textContent;
+      const suitSymbol = text.replace(/^[2-910JQKA]/, '');
+      const suitMap = { '♥': 'hearts', '♦': 'diamonds', '♣': 'clubs', '♠': 'spades' };
+      ledSuit = suitMap[suitSymbol] || null;
+    }
+  }
+  document.querySelectorAll('.game-card').forEach((el, i) => {
+    const card = myHand[i];
+    const playable = isValidPlayClient(card, ledSuit, gameState.heartsBroken, myHand);
+    el.classList.remove('disabled');
+    if (playable) {
+      el.classList.add('playable');
+      el.style.cursor = 'pointer';
+    } else {
+      el.classList.add('disabled');
+      el.style.cursor = 'not-allowed';
+    }
+  });
+}
+
+function playCard() {
+  if (selectedCard === null) {
+    setText('game-msg', 'Sélectionnez une carte à jouer.');
+    return;
+  }
+  const card = myHand[selectedCard];
+  socket.emit('play_card', { roomId: currentRoomId, card: card });
+  deselectCard();
+  disableHand();
+  hidePlayButton();
+  stopTurnTimer();
+  document.querySelectorAll('.game-card').forEach((el) => el.classList.remove('playable'));
+}
+
 function showPassControls() {
   const controls = document.getElementById('game-controls');
   controls.innerHTML = '<button id="btn-pass" class="btn btn-primary" disabled>Passer 3 cartes</button>';
@@ -533,12 +668,15 @@ function validatePassReceived() {
     setText('turn-name', 'C\'est votre tour');
     setText('game-msg', 'Jouez une carte.');
     enableHand();
+    updatePlayableCards();
     showPlayButton();
+    startTurnTimerUI(20);
   } else {
     setText('turn-name', 'Tour adverse');
     setText('game-msg', 'En attente...');
     disableHand();
     hidePlayButton();
+    document.querySelectorAll('.game-card').forEach((el) => el.classList.remove('playable', 'disabled'));
   }
 }
 
@@ -562,6 +700,7 @@ document.addEventListener('click', (e) => {
   if (!gameState) return;
   const cardEl = e.target.closest('.game-card');
   if (!cardEl) return;
+  if (cardEl.classList.contains('disabled')) return;
   const idx = parseInt(cardEl.dataset.idx, 10);
   if (gameState.phase === 'passing') {
     togglePassSelection(idx);

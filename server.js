@@ -123,6 +123,7 @@ io.on('connection', (socket) => {
       players: r.players.length,
       started: r.started,
       playerNames: r.players.map(p => p.name),
+      hasHumans: r.players.some(p => !p.isBot),
     }));
     socket.emit('rooms_list', list);
   });

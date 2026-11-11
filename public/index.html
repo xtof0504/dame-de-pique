@@ -87,6 +87,9 @@
     .modal-content { background: #fff; border-radius: 16px; padding: 28px 24px; max-width: 90%; width: 320px; text-align: center; box-shadow: 0 12px 32px rgba(0,0,0,0.3); }
     .modal-content h3 { margin-bottom: 12px; }
     .modal-content p { margin-bottom: 20px; font-size: 15px; color: #374151; }
+    .turn-timer { font-size: 14px; font-weight: 800; color: var(--danger); background: #fff; border: 1px solid #e5e7eb; border-radius: 20px; padding: 4px 10px; }
+    .game-card.playable { border-color: var(--success); background: #d1fae5; transform: translateY(-8px) scale(1.02); z-index: 10; box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.3); }
+    .game-card.disabled { opacity: 0.5; cursor: not-allowed; }
   </style>
 </head>
 <body>
@@ -138,6 +141,7 @@
       <div class="game-header">
         <div class="turn-indicator" id="turn-indicator">Tour de <span id="turn-name"></span></div>
         <div class="round-badge" id="round-badge">Round 1</div>
+        <div id="turn-timer" class="turn-timer">--:--</div>
       </div>
       <div class="scores" id="scores"></div>
       <div class="trick-area" id="trick-area">
@@ -166,6 +170,6 @@
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
-<script src="js/client.js?v=9"></script>
+<script src="js/client.js?v=10"></script>
 </body>
 </html>
