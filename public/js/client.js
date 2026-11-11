@@ -505,7 +505,7 @@ function renderTrick(cards) {
     cards.forEach((tc) => {
       const div = document.createElement('div');
       div.className = 'trick-card ' + (tc.card.suit === 'hearts' || tc.card.suit === 'diamonds' ? 'red' : 'black');
-      div.innerHTML = renderCardHtml(tc.card, false);
+      div.innerHTML = renderCardHtml(tc.card, true);
       container.appendChild(div);
     });
   }
