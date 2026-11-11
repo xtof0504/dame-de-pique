@@ -155,7 +155,6 @@ socket.on('joined', (data) => {
   setText('waiting-room-id', currentRoomId.replace('room-', ''));
   setText('waiting-room-title', 'Salle ' + currentRoomId.replace('room-', ''));
   renderWaiting(data);
-  startRoomTimer(data.roomId);
 });
 
 socket.on('player_joined', (data) => {
@@ -181,25 +180,6 @@ socket.on('room_closed', (data) => {
 socket.on('error_msg', (data) => {
   showModal('Erreur', data.message);
 });
-
-function startRoomTimer(roomId) {
-  const el = document.getElementById('waiting-countdown');
-  if (!el) return;
-  const startedAt = Date.now();
-  const endAt = startedAt + 20 * 60 * 1000;
-  const tick = setInterval(() => {
-    const left = endAt - Date.now();
-    if (left <= 0) {
-      el.textContent = '00:00';
-      clearInterval(tick);
-      return;
-    }
-    const m = Math.floor(left / 60000);
-    const s = Math.floor((left % 60000) / 1000);
-    el.textContent = String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
-  }, 1000);
-  window._roomTimer = tick;
-}
 
 function renderWaiting(data) {
   renderWaitingPlayers(data.players, data.host);

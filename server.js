@@ -72,7 +72,6 @@ function initRoom(roomId) {
     timer: null,
     host: null,
   };
-  rooms[roomId].timer = setTimeout(() => closeRoom(roomId), ROOM_TIMEOUT_MS);
 }
 
 function closeRoom(roomId) {
