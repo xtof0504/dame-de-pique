@@ -222,7 +222,23 @@
 
 </div>
 
-<script src="/socket.io/socket.io.js"></script>
-<script src="js/client.js?v=21"></script>
+<script src="config.js"></script>
+<script>
+  (function () {
+    var base = (window.SERVER_URL || '').replace(/\/$/, '');
+    var s = document.createElement('script');
+    s.src = base + '/socket.io/socket.io.js';
+    s.onload = function () {
+      var c = document.createElement('script');
+      c.src = 'js/client.js?v=22';
+      document.head.appendChild(c);
+    };
+    s.onerror = function () {
+      var el = document.getElementById('js-error');
+      if (el) { el.textContent = 'Impossible de charger socket.io depuis ' + (base || 'le serveur local') + '. Vérifiez config.js.'; el.style.display = 'block'; }
+    };
+    document.head.appendChild(s);
+  })();
+</script>
 </body>
 </html>

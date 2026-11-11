@@ -1,4 +1,5 @@
-const socket = io();
+const serverUrl = (typeof window.SERVER_URL === 'string' ? window.SERVER_URL : '').replace(/\/$/, '');
+const socket = io(serverUrl || undefined);
 
 let nickname = '';
 let currentRoomId = null;
