@@ -252,6 +252,7 @@ socket.on('game_started', (data) => {
     heartsBroken: data.heartsBroken,
     passingDirection: data.passingDirection,
     phase: 'passing',
+    ledSuit: null,
   };
   myHand = data.hands[myPlayerId] || [];
   renderGame(data);
@@ -344,15 +345,18 @@ socket.on('pass_complete', (data) => {
 socket.on('cards_passed', (data) => {
   // opponent passed, just visual could be added
 });
-
 socket.on('card_played', (data) => {
   stopTurnTimer();
   renderTrick(data.trickCards);
   gameState.heartsBroken = data.heartsBroken;
+  if (data.trickCards.length === 1) {
+    gameState.ledSuit = data.card.suit;
+  }
   if (data.playerId === myPlayerId) {
     myHand = myHand.filter((c) => !(c.suit === data.card.suit && c.rank === data.card.rank));
     renderHand(myHand);
   }
+
   if (data.trickCards.length < 4) {
     setText('turn-name', 'Adversaire a joué.');
     disableHand();
@@ -366,7 +370,6 @@ socket.on('card_played', (data) => {
 
 socket.on('turn_changed', (data) => {
   stopTurnTimer();
-  if (showingTrickWinner) return;
   if (data.turn === myPlayerId) {
     setText('turn-name', 'C\'est votre tour');
     setText('game-msg', 'Jouez une carte.');
@@ -375,8 +378,10 @@ socket.on('turn_changed', (data) => {
     showPlayButton();
     startTurnTimerUI(60);
   } else {
-    setText('turn-name', 'Tour adverse');
-    setText('game-msg', 'En attente...');
+    if (!showingTrickWinner) {
+      setText('turn-name', 'Tour adverse');
+      setText('game-msg', 'En attente...');
+    }
     disableHand();
     hidePlayButton();
     document.querySelectorAll('.game-card').forEach((el) => el.classList.remove('playable', 'disabled'));
@@ -390,6 +395,7 @@ socket.on('trick_ended', (data) => {
   showingTrickWinner = true;
   setText('game-msg', 'Plis terminé. Gagnant : ' + winnerName);
   setScoresRound(data.roundScores);
+  gameState.ledSuit = null;
   setTimeout(() => {
     showingTrickWinner = false;
     if (data.winner === myPlayerId) setText('game-msg', 'Vous gagnez le pli !');
@@ -620,18 +626,7 @@ function isValidPlayClient(card, ledSuit, heartsBroken, hand) {
 
 function updatePlayableCards() {
   if (!gameState) return;
-  const trickContainer = document.getElementById('trick-cards');
-  const firstCardEl = trickContainer.querySelector('.trick-card');
-  let ledSuit = null;
-  if (firstCardEl) {
-    const rankTop = firstCardEl.querySelector('.rank-top');
-    if (rankTop) {
-      const text = rankTop.textContent;
-      const suitSymbol = text.replace(/^[2-910JQKA]/, '');
-      const suitMap = { '♥': 'hearts', '♦': 'diamonds', '♣': 'clubs', '♠': 'spades' };
-      ledSuit = suitMap[suitSymbol] || null;
-    }
-  }
+  const ledSuit = gameState.ledSuit || null;
   document.querySelectorAll('.game-card').forEach((el, i) => {
     const card = myHand[i];
     const playable = isValidPlayClient(card, ledSuit, gameState.heartsBroken, myHand);
@@ -644,20 +639,6 @@ function updatePlayableCards() {
       el.style.cursor = 'not-allowed';
     }
   });
-}
-
-function playCard() {
-  if (selectedCard === null) {
-    setText('game-msg', 'Sélectionnez une carte à jouer.');
-    return;
-  }
-  const card = myHand[selectedCard];
-  socket.emit('play_card', { roomId: currentRoomId, card: card });
-  deselectCard();
-  disableHand();
-  hidePlayButton();
-  stopTurnTimer();
-  document.querySelectorAll('.game-card').forEach((el) => el.classList.remove('playable'));
 }
 
 function showPassControls() {
