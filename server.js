@@ -25,7 +25,7 @@ const PORT = process.env.PORT || 3000;
 const NB_ROOMS = 10;
 const ROOM_TIMEOUT_MS = 20 * 60 * 1000;
 const MAX_PLAYERS = 4;
-const MIN_HUMANS = 1;
+const MIN_HUMANS = 4;
 const MAX_HUMANS = 3;
 
 const suits = ['hearts', 'diamonds', 'clubs', 'spades'];
@@ -342,7 +342,7 @@ function maybeStartGame(roomId, forced) {
   const room = rooms[roomId];
   if (!room || room.started) return;
   const humans = room.players.filter(p => !p.isBot);
-  if (humans.length < MIN_HUMANS) return;
+  if (!forced && humans.length < MIN_HUMANS) return;
   if (!forced) {
     const allReady = humans.every(p => p.ready);
     if (!allReady) return;
@@ -520,9 +520,11 @@ function resolveTrick(room) {
 
   broadcastRoom(room.id, 'trick_ended', {
     winner: winner.playerId,
+    winnerName: player ? player.name : 'Joueur',
     cards: trick.map(tc => ({ playerId: tc.playerId, card: tc.card })),
     points,
     roundScores: game.roundScores,
+    players: room.players.map(p => ({ id: p.id, name: p.name })),
   });
 
   game.trickCards = [];
@@ -572,12 +574,18 @@ function endRound(room) {
     winnerId = room.players.find(p => game.scores[p.id] === minScore).id;
   }
 
+  const dirs = ['left', 'across', 'right', 'none'];
+  const curIdx = dirs.indexOf(game.passingDirection);
+  game.passingDirection = dirs[(curIdx + 1) % dirs.length];
+
   broadcastRoom(room.id, 'round_ended', {
     scores: game.scores,
     roundScores: game.roundScores,
     moonShot,
     gameOver,
     winnerId,
+    passingDirection: game.passingDirection,
+    players: room.players.map(p => ({ id: p.id, name: p.name })),
   });
 
   if (gameOver) {
@@ -601,6 +609,7 @@ function endRound(room) {
       currentTurn: game.turn,
       round: game.round,
       scores: game.scores,
+      passingDirection: game.passingDirection,
     });
 
     startTurnTimer(room);
@@ -675,7 +684,7 @@ function startTurnTimer(room) {
     const playable = current.hand.filter(c => isValidPlay(current.hand, c, game.trickCards.length > 0 ? game.trickCards[0].card.suit : null, game.heartsBroken));
     const card = playable.length ? playable[0] : (current.hand[0] || null);
     if (card) playCardLogic(room, current.id, card);
-  }, 20000);
+  }, 60000);
 }
 
 function botPlay(room) {

@@ -10,6 +10,7 @@ let pendingCurrentTurn = null;
 let roomsData = [];
 let turnTimer = null;
 let turnTimeLeft = 0;
+let playersById = {};
 
 // Affichage des erreurs JS directement sur la page
 window.onerror = (msg, url, line) => {
@@ -258,6 +259,7 @@ document.getElementById('btn-leave-waiting').addEventListener('click', () => {
 // Game started
 socket.on('game_started', (data) => {
   show(screens.game);
+  data.players.forEach(p => { playersById[p.id] = p; });
   gameState = {
     scores: {},
     round: data.round || 1,
@@ -291,7 +293,8 @@ socket.on('new_round', (data) => {
   gameState.round = data.round;
   gameState.heartsBroken = false;
   gameState.phase = 'passing';
-  setPassDirection(gameState.passingDirection);
+  gameState.passingDirection = data.passingDirection;
+  setPassDirection(data.passingDirection);
   setText('round-badge', 'Round ' + data.round);
   myHand = data.hands[myPlayerId] || [];
   renderScores(data.scores);
@@ -383,7 +386,7 @@ socket.on('turn_changed', (data) => {
     enableHand();
     updatePlayableCards();
     showPlayButton();
-    startTurnTimerUI(20);
+    startTurnTimerUI(60);
   } else {
     setText('turn-name', 'Tour adverse');
     setText('game-msg', 'En attente...');
@@ -404,6 +407,7 @@ socket.on('trick_ended', (data) => {
 });
 
 socket.on('round_ended', (data) => {
+  if (data.players) data.players.forEach(p => { playersById[p.id] = p; });
   setText('game-msg', data.moonShot ? 'Lune renversée !' : 'Round terminé.');
   renderScores(data.scores);
   showRoundScoresModal(data.roundScores, data.gameOver, data.scores);
@@ -426,12 +430,7 @@ function renderGame(data) {
 }
 
 function findPlayer(pid) {
-  const room = Object.values(roomsData || {}).find(r => r.players && r.players.some(p => p.id === pid));
-  if (room) {
-    return room.players.find(p => p.id === pid);
-  }
-  // fallback: chercher dans les données de jeu connues
-  return null;
+  return playersById[pid] || null;
 }
 
 function renderScores(scores) {
@@ -670,7 +669,7 @@ function validatePassReceived() {
     enableHand();
     updatePlayableCards();
     showPlayButton();
-    startTurnTimerUI(20);
+    startTurnTimerUI(60);
   } else {
     setText('turn-name', 'Tour adverse');
     setText('game-msg', 'En attente...');
