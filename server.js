@@ -389,8 +389,8 @@ function startGame(roomId) {
     botIdx++;
   }
 
-  shufflePlayers(room);
   dealCards(room);
+  shufflePlayers(room);
   initGameState(room);
 
   broadcastRoom(room.id, 'game_started', {
