@@ -73,6 +73,7 @@
     .my-hand { margin-bottom: 16px; }
     .hand-cards { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; padding: 0 4px; }
     .game-card { width: 62px; height: 90px; background: linear-gradient(145deg, #ffffff, #f3f4f6); border: 2px solid #374151; border-radius: 10px; display: flex; flex-direction: column; padding: 6px 4px; font-size: 14px; font-weight: 800; cursor: pointer; user-select: none; touch-action: manipulation; position: relative; box-shadow: 0 6px 12px rgba(0,0,0,0.25); overflow: hidden; }
+    .game-card.red { color: #dc2626; } .game-card.black { color: #111827; }
     .trick-card.red { color: #dc2626; } .trick-card.black { color: #111827; }
     .game-card.rank-top { font-size: 12px; align-self: flex-start; }
     .game-card.suit-big { align-self: center; margin-top: auto; font-size: 28px; opacity: 0.85; }
@@ -87,9 +88,26 @@
     .modal-content { background: #fff; border-radius: 16px; padding: 28px 24px; max-width: 90%; width: 320px; text-align: center; box-shadow: 0 12px 32px rgba(0,0,0,0.3); }
     .modal-content h3 { margin-bottom: 12px; }
     .modal-content p { margin-bottom: 20px; font-size: 15px; color: #374151; }
+    .scores-table { width: 100%; border-collapse: collapse; margin: 0 auto; }
+    .scores-table th, .scores-table td { border: 1px solid #e5e7eb; padding: 6px 10px; text-align: center; }
+    .scores-table th { background: #f9fafb; font-weight: 800; }
     .turn-timer { font-size: 14px; font-weight: 800; color: var(--danger); background: #fff; border: 1px solid #e5e7eb; border-radius: 20px; padding: 4px 10px; }
     .game-card.playable { border-color: var(--success); background: #d1fae5; transform: translateY(-8px) scale(1.02); z-index: 10; box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.3); }
     .game-card.disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Table layout */
+    .table-layout { display: grid; grid-template-rows: 80px 1fr 120px; grid-template-columns: 120px 1fr 120px; gap: 4px; height: calc(100vh - 260px); }
+    .seat { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .seat.top-seat { grid-row: 1; grid-column: 2; }
+    .seat.left-seat { grid-row: 2; grid-column: 1; }
+    .seat.right-seat { grid-row: 2; grid-column: 3; }
+    .seat.bottom-seat { grid-row: 3; grid-column: 2; }
+    .row-center { grid-row: 2; grid-column: 2; display: flex; align-items: center; justify-content: center; }
+    .trick-area-center { display: flex; align-items: center; justify-content: center; }
+    .opponent-hand.vertical { writing-mode: vertical-rl; text-orientation: mixed; transform: rotate(180deg); }
+    .opponent-hand.vertical .cards-stack { width: 48px; height: 68px; }
+    .opponent-hand.vertical .opponent-name { writing-mode: horizontal-tb; margin-bottom: 6px; }
+
   </style>
 </head>
 <body>
@@ -144,14 +162,42 @@
           <div id="turn-timer" class="turn-timer">--:--</div>
         </div>
         <div class="scores" id="scores"></div>
-        <div class="players-hands" id="players-hands"></div>
-        <div class="trick-area" id="trick-area">
-          <div class="trick-placeholder">Plis en cours</div>
-          <div class="trick-cards" id="trick-cards"></div>
-        </div>
-        <div class="my-hand">
-          <h3>Votre main</h3>
-          <div class="hand-cards" id="hand-cards"></div>
+        <div class="table-layout">
+          <div class="seat top-seat" id="seat-top">
+            <div class="opponent-hand">
+              <div class="opponent-name" id="name-top"></div>
+              <div class="cards-stack" id="stack-top">0</div>
+              <div class="opponent-count" id="count-top">0 cartes</div>
+            </div>
+          </div>
+          <div class="row-center">
+            <div class="seat left-seat" id="seat-left">
+              <div class="opponent-hand vertical">
+                <div class="opponent-name" id="name-left"></div>
+                <div class="cards-stack" id="stack-left">0</div>
+                <div class="opponent-count" id="count-left">0 cartes</div>
+              </div>
+            </div>
+            <div class="trick-area-center">
+              <div class="trick-area" id="trick-area">
+                <div class="trick-placeholder">Plis en cours</div>
+                <div class="trick-cards" id="trick-cards"></div>
+              </div>
+            </div>
+            <div class="seat right-seat" id="seat-right">
+              <div class="opponent-hand vertical">
+                <div class="opponent-name" id="name-right"></div>
+                <div class="cards-stack" id="stack-right">0</div>
+                <div class="opponent-count" id="count-right">0 cartes</div>
+              </div>
+            </div>
+          </div>
+          <div class="seat bottom-seat" id="seat-bottom">
+            <div class="my-hand">
+              <h3>Votre main</h3>
+              <div class="hand-cards" id="hand-cards"></div>
+            </div>
+          </div>
         </div>
         <div class="game-msg" id="game-msg"></div>
         <div class="game-controls" id="game-controls"></div>
@@ -170,6 +216,6 @@
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
-<script src="js/client.js?v=11"></script>
+<script src="js/client.js?v=12"></script>
 </body>
 </html>

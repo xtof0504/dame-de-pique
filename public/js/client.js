@@ -403,7 +403,7 @@ socket.on('trick_ended', (data) => {
   setScoresRound(data.roundScores);
   setTimeout(() => {
     if (data.winner === myPlayerId) setText('game-msg', 'Vous gagnez le pli !');
-  }, 800);
+  }, 3000);
 });
 
 socket.on('round_ended', (data) => {
@@ -435,32 +435,32 @@ function findPlayer(pid) {
 
 function renderScores(scores) {
   const container = document.getElementById('scores');
-  container.innerHTML = '';
+  let html = '<table class="scores-table"><tr><th>Joueur</th><th>Score</th></tr>';
   for (const [pid, val] of Object.entries(scores)) {
-    const box = document.createElement('div');
-    box.className = 'score-box';
     const p = findPlayer(pid);
-    box.innerHTML = '<div class="score-name">' + escapeHtml(p ? p.name : 'Joueur') + '</div><div class="score-value">' + val + '</div>';
-    container.appendChild(box);
+    html += '<tr><td>' + escapeHtml(p ? p.name : 'Joueur') + '</td><td>' + val + '</td></tr>';
   }
+  html += '</table>';
+  container.innerHTML = html;
 }
 
 function showRoundScoresModal(roundScores, gameOver, finalScores) {
   const title = gameOver ? 'Partie terminée - Scores finaux' : 'Scores du round';
-  let body = '';
+  let html = '<table class="scores-table"><tr><th>Joueur</th><th>Points</th></tr>';
   if (gameOver) {
     for (const [pid, val] of Object.entries(finalScores || {})) {
       const p = findPlayer(pid);
-      body += '<div>' + escapeHtml(p ? p.name : 'Joueur') + ' : ' + val + ' points</div>';
+      html += '<tr><td>' + escapeHtml(p ? p.name : 'Joueur') + '</td><td>' + val + '</td></tr>';
     }
   } else {
     for (const [pid, val] of Object.entries(roundScores || {})) {
       const p = findPlayer(pid);
-      body += '<div>' + escapeHtml(p ? p.name : 'Joueur') + ' : ' + val + ' points</div>';
+      html += '<tr><td>' + escapeHtml(p ? p.name : 'Joueur') + '</td><td>' + val + '</td></tr>';
     }
   }
+  html += '</table>';
   setText('modal-title', title);
-  setText('modal-body', body);
+  setText('modal-body', html);
   document.getElementById('overlay').classList.remove('hidden');
   document.getElementById('modal').classList.remove('hidden');
 }
@@ -473,17 +473,28 @@ function setScoresRound(roundScores) {
 }
 
 function renderOpponents(players) {
-  const container = document.getElementById('players-hands');
-  container.innerHTML = '';
+  const seats = { top: null, left: null, right: null };
+  let seatIdx = 0;
+  const seatOrder = ['top', 'left', 'right'];
   players.forEach((p) => {
     if (p.id === myPlayerId) return;
-    const div = document.createElement('div');
-    div.className = 'opponent-hand';
-    div.innerHTML =
-      '<div class="opponent-name">' + escapeHtml(p.name) + '</div>' +
-      '<div class="cards-stack">' + p.handCount + '</div>' +
-      '<div class="opponent-count">' + p.handCount + ' cartes</div>';
-    container.appendChild(div);
+    const seat = seatOrder[seatIdx % seatOrder.length];
+    seatIdx++;
+    const nameEl = document.getElementById('name-' + seat);
+    const stackEl = document.getElementById('stack-' + seat);
+    const countEl = document.getElementById('count-' + seat);
+    if (nameEl) nameEl.textContent = escapeHtml(p.name);
+    if (stackEl) stackEl.textContent = p.handCount;
+    if (countEl) countEl.textContent = p.handCount + ' cartes';
+    if (seats[seat] === null) seats[seat] = p;
+  });
+  // Fill empty seats
+  seatOrder.forEach((seat) => {
+    if (!seats[seat]) {
+      document.getElementById('name-' + seat).textContent = '';
+      document.getElementById('stack-' + seat).textContent = '0';
+      document.getElementById('count-' + seat).textContent = '0 cartes';
+    }
   });
 }
 
