@@ -526,7 +526,10 @@ function renderCardHtml(card, isHand) {
     clubs: '♣',
     spades: '♠',
   }[card.suit];
-  return '<div class="rank-top">' + card.rank + suitSymbol + '</div><div class="suit-big">' + suitSymbol + '</div>';
+  const faceSymbols = { K: '♔', Q: '♕', J: '♘' };
+  const isFace = ['K', 'Q', 'J'].includes(card.rank);
+  const center = isFace ? '<div class="face-center">' + faceSymbols[card.rank] + '</div>' : '';
+  return '<div class="rank-top">' + card.rank + suitSymbol + '</div>' + center + '<div class="suit-big">' + suitSymbol + '</div>';
 }
 
 function selectCard(idx) {

@@ -96,7 +96,7 @@
     .game-card.disabled { opacity: 0.5; cursor: not-allowed; }
 
     /* Table layout */
-    .table-layout { display: grid; grid-template-rows: 80px 1fr 120px; grid-template-columns: 170px 1fr 170px; gap: 130px; height: calc(100vh - 260px); }
+    .table-layout { display: grid; grid-template-rows: 80px 1fr 120px; grid-template-columns: 120px 1fr 120px; gap: 4px; height: calc(100vh - 260px); }
     .seat { display: flex; flex-direction: column; align-items: center; justify-content: center; }
     .seat.top-seat { grid-row: 1; grid-column: 2; }
     .seat.left-seat { grid-row: 2; grid-column: 1; }
@@ -104,7 +104,10 @@
     .seat.bottom-seat { grid-row: 3; grid-column: 2; }
     .row-center { grid-row: 2; grid-column: 2; display: flex; align-items: center; justify-content: center; }
     .trick-area-center { display: flex; align-items: center; justify-content: center; }
-    .opponent-hand.vertical { display: flex; flex-direction: column; align-items: center; }
+    .opponent-hand.vertical { writing-mode: vertical-rl; text-orientation: mixed; transform: rotate(180deg); }
+    .opponent-hand.vertical .cards-stack { width: 48px; height: 68px; }
+    .opponent-hand.vertical .opponent-name { writing-mode: horizontal-tb; margin-bottom: 6px; }
+    .face-center { font-size: 22px; opacity: 0.7; margin-top: 4px; text-align: center; }
 
   </style>
 </head>
@@ -214,6 +217,6 @@
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
-<script src="js/client.js?v=16"></script>
+<script src="js/client.js?v=17"></script>
 </body>
 </html>
