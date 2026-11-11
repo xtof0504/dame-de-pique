@@ -56,6 +56,19 @@ function hideModal() {
 
 document.getElementById('modal-ok').addEventListener('click', hideModal);
 
+// Style visuel pour les cartes reçues lors du passage
+const receivedStyle = document.createElement('style');
+receivedStyle.textContent = `
+  .game-card.received {
+    border-color: var(--success);
+    background: #d1fae5;
+    box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.3);
+    transform: translateY(-8px) scale(1.02);
+    z-index: 10;
+  }
+`;
+document.head.appendChild(receivedStyle);
+
 // Nickname screen
 const nicknameInput = document.getElementById('nickname');
 const btnContinue = document.getElementById('btn-continue');
@@ -270,9 +283,41 @@ socket.on('new_round', (data) => {
 
 socket.on('pass_complete', (data) => {
   gameState.phase = 'playing';
+  const oldHand = myHand.slice();
   myHand = data.hands[myPlayerId] || [];
   renderHand(myHand);
   hidePassControls();
+
+  // Surligner brièvement les cartes reçues lors du passage
+  const oldCounts = {};
+  for (const c of oldHand) {
+    const key = c.suit + ':' + c.rank;
+    oldCounts[key] = (oldCounts[key] || 0) + 1;
+  }
+  const receivedIdxs = [];
+  for (let i = 0; i < myHand.length; i++) {
+    const c = myHand[i];
+    const key = c.suit + ':' + c.rank;
+    if ((oldCounts[key] || 0) === 0) {
+      receivedIdxs.push(i);
+    } else {
+      oldCounts[key]--;
+    }
+  }
+  receivedIdxs.forEach((idx) => {
+    const el = document.querySelector('.game-card[data-idx="' + idx + '"]');
+    if (el) el.classList.add('received');
+  });
+  if (receivedIdxs.length > 0) {
+    setText('game-msg', 'Vous avez reçu ' + receivedIdxs.length + ' carte(s).');
+    setTimeout(() => {
+      receivedIdxs.forEach((idx) => {
+        const el = document.querySelector('.game-card[data-idx="' + idx + '"]');
+        if (el) el.classList.remove('received');
+      });
+    }, 2000);
+  }
+
   if (data.currentTurn === myPlayerId) {
     setText('turn-name', 'C\'est votre tour');
     setText('game-msg', 'Jouez une carte.');
