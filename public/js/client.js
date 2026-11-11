@@ -473,10 +473,6 @@ function renderCardHtml(card, isHand) {
 
 function selectCard(idx) {
   if (gameState.phase !== 'playing') return;
-  if (selectedCard === idx) {
-    deselectCard();
-    return;
-  }
   document.querySelectorAll('.game-card').forEach((el, i) => {
     el.classList.toggle('selected', i === idx);
   });
@@ -558,7 +554,11 @@ document.addEventListener('click', (e) => {
   if (gameState.phase === 'passing') {
     togglePassSelection(idx);
   } else if (gameState.phase === 'playing') {
-    selectCard(idx);
+    if (selectedCard === idx) {
+      playCard();
+    } else {
+      selectCard(idx);
+    }
   }
 });
 
