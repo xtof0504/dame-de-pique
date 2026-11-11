@@ -147,9 +147,9 @@
     .seat.bottom-seat { grid-row: 3; grid-column: 2; }
     .row-center { grid-row: 2; grid-column: 2; display: flex; align-items: center; justify-content: center; }
     .trick-area-center { display: flex; align-items: center; justify-content: center; }
-    .opponent-hand.vertical { writing-mode: vertical-rl; text-orientation: mixed; transform: rotate(180deg); }
+    .opponent-hand.vertical { display: flex; flex-direction: column; align-items: center; }
     .opponent-hand.vertical .cards-stack { width: 48px; height: 68px; }
-    .opponent-hand.vertical .opponent-name { writing-mode: horizontal-tb; margin-bottom: 6px; }
+    .opponent-hand.vertical .opponent-name { margin-bottom: 6px; }
   </style>
 </head>
 <body>
@@ -258,6 +258,6 @@
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
-<script src="js/client.js?v=18"></script>
+<script src="js/client.js?v=19"></script>
 </body>
 </html>
