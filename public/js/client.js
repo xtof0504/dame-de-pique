@@ -426,7 +426,13 @@ socket.on('round_ended', (data) => {
 
 socket.on('game_over', (data) => {
   setText('game-msg', 'Partie terminée.');
-  showModal('Partie terminée', 'Scores : ' + JSON.stringify(data.scores));
+  let html = '<table class="scores-table"><tr><th>Joueur</th><th>Score</th></tr>';
+  for (const [pid, val] of Object.entries(data.scores || {})) {
+    const p = findPlayer(pid);
+    html += '<tr><td>' + escapeHtml(p ? p.name : pid) + '</td><td>' + val + '</td></tr>';
+  }
+  html += '</table>';
+  showModal('Partie terminée', html);
 });
 
 function renderGame(data) {
