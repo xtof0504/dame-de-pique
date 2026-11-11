@@ -398,20 +398,22 @@ socket.on('trick_ended', (data) => {
   setScoresRound(data.roundScores);
   gameState.ledSuit = null;
 
-  // Les cartes du pli partent vers le siège du gagnant
-  const winnerSeat = playerSeats[data.winner] || 'bottom';
-  document.querySelectorAll('#trick-cards .trick-card').forEach((el) => {
-    el.classList.add('trick-won-' + winnerSeat);
-  });
-
+  // Pause de 5 sec puis les cartes du pli partent vers le siège du gagnant
   setTimeout(() => {
-    showingTrickWinner = false;
-    const container = document.getElementById('trick-cards');
-    container.innerHTML = '';
-    const placeholder = document.getElementById('trick-area').querySelector('.trick-placeholder');
-    if (placeholder) placeholder.style.display = 'block';
-    if (data.winner === myPlayerId) setText('game-msg', 'Vous gagnez le pli !');
-  }, 700);
+    const winnerSeat = playerSeats[data.winner] || 'bottom';
+    document.querySelectorAll('#trick-cards .trick-card').forEach((el) => {
+      el.classList.add('trick-won-' + winnerSeat);
+    });
+
+    setTimeout(() => {
+      showingTrickWinner = false;
+      const container = document.getElementById('trick-cards');
+      container.innerHTML = '';
+      const placeholder = document.getElementById('trick-area').querySelector('.trick-placeholder');
+      if (placeholder) placeholder.style.display = 'block';
+      if (data.winner === myPlayerId) setText('game-msg', 'Vous gagnez le pli !');
+    }, 700);
+  }, 5000);
 });
 
 socket.on('round_ended', (data) => {
