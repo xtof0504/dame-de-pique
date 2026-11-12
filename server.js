@@ -5,6 +5,15 @@ const path = require('path');
 const cors = require('cors');
 
 const app = express();
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
 app.use(cors());
 app.use(express.static(path.join(__dirname, 'public'), {
   etag: false,
@@ -19,6 +28,12 @@ app.use(express.static(path.join(__dirname, 'public'), {
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: '*', methods: ['GET', 'POST'] },
+  transports: ['websocket', 'polling'],
+  allowEIO3: true,
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  upgradeTimeout: 10000,
+  maxHttpBufferSize: 1000000,
 });
 
 const PORT = process.env.PORT || 3000;
@@ -839,6 +854,6 @@ function socketEmitTo(socketId, event, data) {
   if (sock) sock.emit(event, data);
 }
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log('Serveur Dame de Pique lancé sur le port ' + PORT);
 });

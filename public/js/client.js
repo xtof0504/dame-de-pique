@@ -1,5 +1,28 @@
 const serverUrl = (typeof window.SERVER_URL === 'string' ? window.SERVER_URL : '').replace(/\/$/, '');
-const socket = io(serverUrl || undefined);
+const socket = io(serverUrl || undefined, {
+  transports: ['websocket', 'polling'],
+  upgradeTimeout: 10000,
+  timeout: 20000,
+  reconnection: true,
+  reconnectionAttempts: Infinity,
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 5000,
+  randomizationFactor: 0.5,
+  autoConnect: true,
+});
+socket.on('connect', () => {
+  const el = document.getElementById('room-status');
+  if (el) el.textContent = 'Connecté au serveur.';
+});
+socket.on('connect_error', (err) => {
+  const el = document.getElementById('room-status');
+  if (el) el.textContent = 'Erreur connexion serveur : ' + (err && err.message ? err.message : String(err));
+  console.error('Socket.io connect_error', err);
+});
+socket.on('disconnect', (reason) => {
+  const el = document.getElementById('room-status');
+  if (el) el.textContent = 'Déconnecté : ' + reason;
+});
 
 let nickname = '';
 let currentRoomId = null;
