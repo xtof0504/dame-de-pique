@@ -569,11 +569,19 @@ function renderHand(hand) {
   myHand = hand;
   const container = document.getElementById('hand-cards');
   container.innerHTML = '';
+  const n = hand.length;
   hand.forEach((card, idx) => {
     const div = document.createElement('div');
     div.className = 'game-card ' + (card.suit === 'hearts' || card.suit === 'diamonds' ? 'red' : 'black');
     div.dataset.idx = idx;
     div.innerHTML = renderCardHtml(card, true);
+    // Calcul de la rotation et de la translation pour l'effet éventail
+    const offset = idx - (n - 1) / 2;
+    const rot = offset * 3.5;
+    const ty = Math.abs(offset) * 2;
+    div.style.setProperty('--rot', rot + 'deg');
+    div.style.setProperty('--ty', ty + 'px');
+    div.style.setProperty('--sc', '1');
     div.addEventListener('click', () => selectCard(idx));
     container.appendChild(div);
   });
