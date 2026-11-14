@@ -63,11 +63,13 @@
     .score-name { font-size: 12px; color: var(--secondary); margin-bottom: 4px; }
     .score-value { font-size: 18px; font-weight: 800; color: var(--text); }
     .trick-area { display: flex; align-items: center; justify-content: center; margin-bottom: 12px; }
-    .trick-cards { display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 100px 100px 100px; gap: 12px; width: 260px; height: 324px; justify-items: center; align-items: center; }
-    .trick-card.seat-top { grid-area: 1 / 2; }
-    .trick-card.seat-left { grid-area: 2 / 1; }
-    .trick-card.seat-right { grid-area: 2 / 3; }
-    .trick-card.seat-bottom { grid-area: 3 / 2; }
+    /* Disposition en croix : haut au centre, gauche/droite à mi-hauteur, bas en dessous */
+    .trick-cards { position: relative; width: 204px; height: 196px; }
+    .trick-cards .trick-card { position: absolute; }
+    .trick-card.seat-top { left: 71px; top: 0; }
+    .trick-card.seat-left { left: 0; top: 52px; }
+    .trick-card.seat-right { right: 0; top: 52px; }
+    .trick-card.seat-bottom { left: 71px; top: 104px; }
     .trick-won-top { transition: transform 0.7s ease; transform: translateY(-260px) scale(0.9); z-index: 30; }
     .trick-won-left { transition: transform 0.7s ease; transform: translateX(-260px) scale(0.9); z-index: 30; }
     .trick-won-right { transition: transform 0.7s ease; transform: translateX(260px) scale(0.9); z-index: 30; }
@@ -78,13 +80,13 @@
     .opponent-name { font-size: 12px; font-weight: 700; color: var(--text); }
     .opponent-count { font-size: 12px; color: var(--secondary); }
     .cards-stack { width: 48px; height: 68px; background: linear-gradient(135deg, #1e3a8a 25%, #1e40af 25%, #1e40af 50%, #2563eb 50%, #2563eb 75%, #1e3a8a 75%); background-size: 16px 16px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 800; border: 2px solid #1e3a8a; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
-    .my-hand { margin-bottom: 8px; padding: 0 2px; }
-    .hand-cards { display: flex; align-items: flex-end; justify-content: center; padding: 0 4px; min-height: 150px; perspective: 1000px; }
-    .game-card { width: 54px; height: 80px; background: #fff; border: 2px solid #374151; border-radius: 8px; position: relative; box-shadow: 0 6px 12px rgba(0,0,0,0.25); overflow: hidden; cursor: pointer; user-select: none; touch-action: manipulation; display: flex; align-items: center; justify-content: center; margin: 0 -16px; transform: rotate(var(--rot, 0deg)) translateY(var(--ty, 0px)) scale(var(--sc, 1)); transform-origin: bottom center; transition: transform 0.2s ease, box-shadow 0.2s ease, margin 0.2s ease; }
-    .game-card.red { } .game-card.black { }
-    .game-card .card-img { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .game-card.selected { border-color: var(--primary); background: #dbeafe; transform: rotate(var(--rot, 0deg)) translateY(-14px) scale(1.06); z-index: 10; box-shadow: 0 8px 16px rgba(37,99,235,0.35); }
-    .game-card.disabled { opacity: 0.5; cursor: not-allowed; }
+    .my-hand { margin-bottom: 8px; padding: 0 2px; width: 100%; }
+    .hand-cards { display: flex; align-items: flex-end; justify-content: center; padding: 0 4px; min-height: 150px; perspective: 1000px; overflow: visible; }
+    .game-card { flex: 0 0 auto; width: var(--card-w, 54px); height: var(--card-h, 80px); background: #fff; border: 2px solid #374151; border-radius: 8px; position: relative; box-shadow: 0 6px 12px rgba(0,0,0,0.25); overflow: hidden; cursor: pointer; user-select: none; touch-action: manipulation; display: flex; align-items: center; justify-content: center; margin: 0 var(--card-m, -16px); transform: rotate(var(--rot, 0deg)) translateY(calc(var(--ty, 0px) - var(--lift, 0px))) scale(var(--sc, 1)); transform-origin: bottom center; transition: transform 0.2s ease, box-shadow 0.2s ease, margin 0.2s ease; }
+    .game-card .card-img { width: 100%; height: 100%; object-fit: cover; display: block; image-rendering: crisp-edges; }
+    .game-card.selected { border-color: var(--primary); background: #dbeafe; --lift: 16px; box-shadow: 0 8px 16px rgba(37,99,235,0.35); }
+    .game-card.disabled { cursor: not-allowed; }
+    .game-card.locked { cursor: default; }
     .trick-card { width: 62px; height: 90px; background: #fff; border: 2px solid #374151; border-radius: 10px; position: relative; box-shadow: 0 4px 8px rgba(0,0,0,0.2); display: flex; align-items: center; justify-content: center; }
     .trick-card .card-img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .card-back { width: 100%; height: 100%; background: linear-gradient(135deg, #1e3a8a 25%, #1e40af 25%, #1e40af 50%, #2563eb 50%, #2563eb 75%, #1e3a8a 75%); background-size: 16px 16px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 800; border: 2px solid #1e3a8a; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
@@ -100,21 +102,28 @@
     .scores-table th, .scores-table td { border: 1px solid #e5e7eb; padding: 6px 10px; text-align: center; }
     .scores-table th { background: #f9fafb; font-weight: 800; }
     .turn-timer { font-size: 14px; font-weight: 800; color: var(--danger); background: #fff; border: 1px solid #e5e7eb; border-radius: 20px; padding: 4px 10px; }
-    .game-card.playable { border-color: var(--success); background: #d1fae5; transform: translateY(-8px) scale(1.02); z-index: 10; box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.3); }
-    .game-card.disabled { opacity: 0.5; cursor: not-allowed; }
+    .game-card.playable { border-color: var(--success); background: #d1fae5; --lift: 8px; box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.3); }
+    .game-card.playable.selected { border-color: var(--primary); background: #dbeafe; --lift: 16px; box-shadow: 0 8px 16px rgba(37,99,235,0.35); }
 
     /* Table layout */
-    .table-layout { display: grid; grid-template-rows: 80px 1fr 160px; grid-template-columns: 120px 1fr 120px; gap: 4px; height: calc(100vh - 240px); width: 100%; }
+    .table-layout { display: grid; grid-template-rows: 80px 1fr auto; grid-template-columns: 120px minmax(0, 1fr) 120px; gap: 4px; height: calc(100vh - 240px); width: 100%; }
     .seat { display: flex; flex-direction: column; align-items: center; justify-content: center; }
     .seat.top-seat { grid-row: 1; grid-column: 2; }
     .seat.left-seat { grid-row: 2; grid-column: 1; margin-right: 124px; }
     .seat.right-seat { grid-row: 2; grid-column: 3; margin-left: 124px; }
-    .seat.bottom-seat { grid-row: 3; grid-column: 1 / span 3; margin: 0; padding: 0 4px; }
+    .seat.bottom-seat { grid-row: 3; grid-column: 1 / span 3; margin: 0; padding: 0 4px; align-items: stretch; min-width: 0; }
     .row-center { grid-row: 2; grid-column: 2; display: flex; align-items: center; justify-content: center; }
     .trick-area-center { display: flex; align-items: center; justify-content: center; }
     .opponent-hand.vertical { display: flex; flex-direction: column; align-items: center; }
     .opponent-hand.vertical .cards-stack { width: 48px; height: 68px; }
     .opponent-hand.vertical .opponent-name { margin-bottom: 6px; }
+
+    /* Téléphone : colonnes latérales étroites pour que la table tienne dans l'écran */
+    @media (max-width: 600px) {
+      .table-layout { grid-template-columns: 60px minmax(0, 1fr) 60px; }
+      .seat.left-seat { margin-right: 0; }
+      .seat.right-seat { margin-left: 0; }
+    }
   </style>
 </head>
 <body>
@@ -227,7 +236,7 @@
 <script>
   (function () {
     var c = document.createElement('script');
-    c.src = 'js/client.js?v=23';
+    c.src = 'js/client.js?v=26';
     document.head.appendChild(c);
   })();
 </script>

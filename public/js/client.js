@@ -98,9 +98,9 @@ receivedStyle.textContent = `
   .game-card.received {
     border-color: var(--success);
     background: #d1fae5;
-    box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.3);
-    transform: translateY(-8px) scale(1.02);
-    z-index: 10;
+    opacity: 1;
+    box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.35), 0 0 14px rgba(16, 185, 129, 0.55);
+    --lift: 8px;
   }
 `;
 document.head.appendChild(receivedStyle);
@@ -282,7 +282,7 @@ socket.on('game_started', (data) => {
   myHand = data.hands[myPlayerId] || [];
   renderGame(data);
   renderHand(myHand);
-  setText('game-msg', data.passingDirection !== 'none' ? 'Choisissez 3 cartes à passer.' : 'La partie commence.');
+  setText('game-msg', data.passingDirection !== 'none' ? passPrompt(data.passingDirection) : 'La partie commence.');
   setPassDirection(data.passingDirection);
   if (data.passingDirection !== 'none') {
     showPassControls();
@@ -311,8 +311,10 @@ socket.on('new_round', (data) => {
   myHand = data.hands[myPlayerId] || [];
   renderScores(data.scores);
   renderHand(myHand);
+  cancelTrickClear();
+  showingTrickWinner = false;
   document.getElementById('trick-cards').innerHTML = '';
-  setText('game-msg', 'Choisissez 3 cartes à passer.');
+  setText('game-msg', passPrompt(data.passingDirection));
   showPassControls();
 });
 
@@ -372,6 +374,9 @@ socket.on('cards_passed', (data) => {
 });
 socket.on('card_played', (data) => {
   stopTurnTimer();
+  // Un nouveau pli commence : annuler l'effacement différé de l'ancien
+  cancelTrickClear();
+  showingTrickWinner = false;
   renderTrick(data.trickCards);
   gameState.heartsBroken = data.heartsBroken;
   if (data.trickCards.length === 1) {
@@ -422,23 +427,31 @@ socket.on('trick_ended', (data) => {
   setScoresRound(data.roundScores);
   gameState.ledSuit = null;
 
-  // Pause de 5 sec puis les cartes du pli partent vers le siège du gagnant
-  setTimeout(() => {
+  // Pause de 1 sec puis les cartes du pli partent vers le siège du gagnant
+  cancelTrickClear();
+  trickClearTimers.push(setTimeout(() => {
     const winnerSeat = playerSeats[data.winner] || 'bottom';
     document.querySelectorAll('#trick-cards .trick-card').forEach((el) => {
       el.classList.add('trick-won-' + winnerSeat);
     });
 
-    setTimeout(() => {
+    trickClearTimers.push(setTimeout(() => {
+      trickClearTimers = [];
       showingTrickWinner = false;
       const container = document.getElementById('trick-cards');
       container.innerHTML = '';
       const placeholder = document.getElementById('trick-area').querySelector('.trick-placeholder');
       if (placeholder) placeholder.style.display = 'block';
       if (data.winner === myPlayerId) setText('game-msg', 'Vous gagnez le pli !');
-    }, 700);
-  }, 5000);
+    }, 700));
+  }, 1000));
 });
+
+let trickClearTimers = [];
+function cancelTrickClear() {
+  trickClearTimers.forEach(clearTimeout);
+  trickClearTimers = [];
+}
 
 socket.on('round_ended', (data) => {
   if (data.players) data.players.forEach(p => { playersById[p.id] = p; });
@@ -576,16 +589,53 @@ function renderHand(hand) {
     div.dataset.idx = idx;
     div.innerHTML = renderCardHtml(card, true);
     // Calcul de la rotation et de la translation pour l'effet éventail
+    const narrow = window.innerWidth <= 480;
+    const rotPer = narrow ? 1.8 : 3.5;
+    const tyPer = narrow ? 1.2 : 2;
     const offset = idx - (n - 1) / 2;
-    const rot = offset * 3.5;
-    const ty = Math.abs(offset) * 2;
+    const rot = offset * rotPer;
+    const ty = Math.abs(offset) * tyPer;
     div.style.setProperty('--rot', rot + 'deg');
     div.style.setProperty('--ty', ty + 'px');
     div.style.setProperty('--sc', '1');
     div.addEventListener('click', () => selectCard(idx));
     container.appendChild(div);
   });
+  layoutHand();
+  // Recalcul une fois la mise en page appliquée (écran tout juste affiché)
+  requestAnimationFrame(layoutHand);
 }
+
+// Adapte la taille et le chevauchement des cartes pour que l'éventail
+// occupe toute la largeur disponible (en particulier sur téléphone).
+function layoutHand() {
+  const container = document.getElementById('hand-cards');
+  if (!container) return;
+  const n = container.children.length;
+  if (n === 0) return;
+  const narrow = window.innerWidth <= 480;
+  const maxRot = ((n - 1) / 2) * (narrow ? 1.8 : 3.5) * Math.PI / 180;
+  // Largeur disponible, limitée sur grand écran
+  // (si l'écran de jeu n'est pas encore affiché, se baser sur la fenêtre)
+  // Ne jamais dépasser la largeur visible de l'écran
+  const screenW = document.documentElement.clientWidth - 32;
+  const width = Math.min(container.clientWidth || screenW, screenW);
+  let avail = Math.min(width, 560);
+  // Taille des cartes : proportionnelle à la largeur, bornée
+  const w = Math.max(44, Math.min(76, Math.round(avail / 6.2)));
+  const h = Math.round(w * 1.48);
+  // Marge pour les cartes des bords, inclinées
+  avail -= 2 * Math.ceil(h * Math.sin(maxRot)) + 4;
+  // Pas entre deux cartes (sans trop les écarter s'il en reste peu)
+  const step = n > 1 ? Math.min((avail - w) / (n - 1), w * 0.8) : w;
+  const margin = (step - w) / 2;
+  container.style.setProperty('--card-w', w + 'px');
+  container.style.setProperty('--card-h', h + 'px');
+  container.style.setProperty('--card-m', margin.toFixed(1) + 'px');
+  container.style.minHeight = (h + 40) + 'px';
+}
+
+window.addEventListener('resize', layoutHand);
 
 function rankToFile(rank) {
   const map = { '2': '2', '3': '3', '4': '4', '5': '5', '6': '6', '7': '7', '8': '8', '9': '9', '10': '10', 'J': 'jack', 'Q': 'queen', 'K': 'king', 'A': 'ace' };
@@ -614,18 +664,43 @@ function deselectCard() {
 }
 
 function enableHand() {
-  document.querySelectorAll('.game-card').forEach((el) => el.classList.remove('disabled'));
+  document.querySelectorAll('.game-card').forEach((el) => el.classList.remove('locked', 'disabled'));
 }
 
+// Bloque les clics sur la main, sans transparence
 function disableHand() {
-  document.querySelectorAll('.game-card').forEach((el) => el.classList.add('disabled'));
+  document.querySelectorAll('.game-card').forEach((el) => {
+    el.classList.remove('disabled');
+    el.classList.add('locked');
+  });
+}
+
+// Nom du joueur qui reçoit mes cartes selon le sens du passage
+// (gauche → siège de gauche, droite → siège de droite, en face → siège du haut)
+function passTargetName(dir) {
+  const seatByDir = { left: 'left', right: 'right', across: 'top' };
+  const seat = seatByDir[dir];
+  if (!seat) return null;
+  const pid = Object.keys(playerSeats).find((id) => playerSeats[id] === seat);
+  const p = pid ? findPlayer(pid) : null;
+  return p ? p.name : null;
 }
 
 function setPassDirection(dir) {
-  const labels = { left: 'à gauche', right: 'à droite', across: 'en face', none: 'aucune' };
+  const labels = { left: 'à gauche', right: 'à droite', across: 'en face' };
   const el = document.getElementById('turn-timer');
-  el.textContent = 'Passe : ' + (labels[dir] || dir);
+  if (dir === 'none') {
+    el.textContent = 'Pas de passe';
+  } else {
+    const name = passTargetName(dir);
+    el.textContent = name ? 'Passe à ' + name : 'Passe ' + (labels[dir] || dir);
+  }
   el.style.color = 'var(--secondary)';
+}
+
+function passPrompt(dir) {
+  const name = passTargetName(dir);
+  return name ? 'Choisissez 3 cartes à passer à ' + name + '.' : 'Choisissez 3 cartes à passer.';
 }
 
 function startTurnTimerUI(seconds) {
@@ -681,12 +756,11 @@ function updatePlayableCards() {
   document.querySelectorAll('.game-card').forEach((el, i) => {
     const card = myHand[i];
     const playable = isValidPlayClient(card, ledSuit, gameState.heartsBroken, myHand);
-    el.classList.remove('disabled');
+    el.classList.remove('playable', 'disabled');
     if (playable) {
       el.classList.add('playable');
       el.style.cursor = 'pointer';
     } else {
-      el.classList.add('disabled');
       el.style.cursor = 'not-allowed';
     }
   });
@@ -753,7 +827,7 @@ document.addEventListener('click', (e) => {
   if (!gameState) return;
   const cardEl = e.target.closest('.game-card');
   if (!cardEl) return;
-  if (cardEl.classList.contains('disabled')) return;
+  if (cardEl.classList.contains('disabled') || cardEl.classList.contains('locked')) return;
   const idx = parseInt(cardEl.dataset.idx, 10);
   if (gameState.phase === 'passing') {
     togglePassSelection(idx);

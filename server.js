@@ -124,6 +124,9 @@ function broadcastRoom(roomId, event, data) {
   }
 }
 
+// Durée d'affichage d'un pli terminé (doit correspondre à l'animation côté client)
+const TRICK_PAUSE_MS = 1700; // 1 s d'affichage + 0,7 s d'animation
+
 function resetTurnTimers(room) {
   if (room.turnTimer) clearTimeout(room.turnTimer);
 }
@@ -563,7 +566,13 @@ function resolveTrick(room) {
   if (totalCardsPlayed === 52) {
     endRound(room);
   } else {
-    startTurnTimer(room);
+    // Laisser le temps aux clients d'afficher le pli terminé avant le suivant
+    resetTurnTimers(room);
+    const currentGame = room.game;
+    room.turnTimer = setTimeout(() => {
+      if (room.game !== currentGame) return;
+      startTurnTimer(room);
+    }, TRICK_PAUSE_MS);
   }
 }
 
