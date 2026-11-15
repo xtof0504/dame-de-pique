@@ -102,6 +102,7 @@ function resetRoom(roomId) {
     room.game = null;
   }
   initRoom(roomId);
+  broadcastRoomsList();
 }
 
 function closeRoom(roomId) {
@@ -166,6 +167,37 @@ function broadcastRoom(roomId, event, data) {
 // Durée d'affichage d'un pli terminé (doit correspondre à l'animation côté client)
 const TRICK_PAUSE_MS = 1700; // 1 s d'affichage + 0,7 s d'animation
 
+// Liste des salles telle qu'affichée sur l'écran de choix
+function roomsList() {
+  return Object.values(rooms).map((r) => {
+    const inProgress = gameInProgress(r);
+    // Places libres : sièges vides avant la partie, sièges tenus par un bot pendant
+    let freeSeats = 0;
+    if (!r.started) freeSeats = MAX_PLAYERS - r.players.length;
+    else if (inProgress) freeSeats = r.players.filter(p => p.isBot).length;
+    return {
+      id: r.id,
+      players: r.players.length,
+      started: r.started,
+      inProgress,
+      freeSeats,
+      playerNames: r.players.filter(p => !p.isBot).map(p => p.name),
+      hasHumans: r.players.some(p => !p.isBot),
+    };
+  });
+}
+
+// Envoie la liste des salles à jour à tous les clients connectés
+// (regroupé : plusieurs changements rapprochés ne donnent qu'un envoi)
+let roomsBroadcastTimer = null;
+function broadcastRoomsList() {
+  if (roomsBroadcastTimer) return;
+  roomsBroadcastTimer = setTimeout(() => {
+    roomsBroadcastTimer = null;
+    io.emit('rooms_list', roomsList());
+  }, 100);
+}
+
 function resetTurnTimers(room) {
   if (room.turnTimer) clearTimeout(room.turnTimer);
 }
@@ -174,23 +206,7 @@ io.on('connection', (socket) => {
   socketsById[socket.id] = socket;
 
   socket.on('get_rooms', () => {
-    const list = Object.values(rooms).map((r) => {
-      const inProgress = gameInProgress(r);
-      // Places libres : sièges vides avant la partie, sièges tenus par un bot pendant
-      let freeSeats = 0;
-      if (!r.started) freeSeats = MAX_PLAYERS - r.players.length;
-      else if (inProgress) freeSeats = r.players.filter(p => p.isBot).length;
-      return {
-        id: r.id,
-        players: r.players.length,
-        started: r.started,
-        inProgress,
-        freeSeats,
-        playerNames: r.players.filter(p => !p.isBot).map(p => p.name),
-        hasHumans: r.players.some(p => !p.isBot),
-      };
-    });
-    socket.emit('rooms_list', list);
+    socket.emit('rooms_list', roomsList());
   });
 
   socket.on('get_hall_of_fame', () => {
@@ -238,6 +254,7 @@ io.on('connection', (socket) => {
       queenSpades: false,
     };
     room.players.push(player);
+    broadcastRoomsList();
     playerSockets[socket.id] = player;
     socket.join(roomId);
 
@@ -392,6 +409,7 @@ function leaveRoomInternal(socketId, roomId) {
   if (!room) return;
   const leaver = seatOf(room, socketId);
   if (!leaver) return;
+  broadcastRoomsList();
   socketLeave(roomId, socketId);
 
   const inProgress = gameInProgress(room);
@@ -454,6 +472,7 @@ function joinGameInProgress(socket, room, name) {
   seat.isBot = false;
   seat.paused = false;
   seat.socketId = socket.id;
+  broadcastRoomsList();
   seat.name = name;
   seat.ready = true;
   if (game.botMoon) game.botMoon[seat.id] = false;
@@ -569,6 +588,7 @@ function startGame(roomId) {
   const room = rooms[roomId];
   if (!room || room.started) return;
   room.started = true;
+  broadcastRoomsList();
 
   const humans = room.players.filter(p => !p.isBot);
   const botsNeeded = MAX_PLAYERS - humans.length;
@@ -941,6 +961,7 @@ function endGame(room, reason) {
   const game = room.game;
   if (game.gameOver) return;
   game.gameOver = true;
+  broadcastRoomsList();
   resetTurnTimers(room);
   if (reason === 'normal') recordGameResult(room);
   broadcastRoom(room.id, 'game_over', {
