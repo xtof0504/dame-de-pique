@@ -1,0 +1,8 @@
+{
+  "appId": "com.xtof.damepique",
+  "appName": "Dame de Pique",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": true
+  }
+}
