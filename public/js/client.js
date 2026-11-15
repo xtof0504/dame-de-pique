@@ -192,29 +192,32 @@ function loadRooms() {
 socket.on('rooms_list', (rooms) => {
   roomsData = rooms;
   roomsGrid.innerHTML = '';
-  const now = Date.now();
   rooms.forEach((room) => {
     const btn = document.createElement('button');
     btn.className = 'room-btn';
     const names = (room.playerNames || []).join(', ');
-    const onlyBots = !room.hasHumans;
-    btn.textContent = 'Salle ' + room.id.replace('room-', '') + (onlyBots ? ' (libre)' : ' - ' + names);
-    btn.title = onlyBots ? 'Salle libre (que des bots)' : 'Joueurs : ' + names;
-    if (room.started) {
-      btn.classList.add('started');
-      btn.disabled = true;
-      btn.title = 'Partie en cours';
-    } else if (room.players.length >= 4) {
+    const free = room.freeSeats || 0;
+    const freeTxt = free + ' place' + (free > 1 ? 's' : '') + ' libre' + (free > 1 ? 's' : '');
+    let status;
+    if (room.inProgress) status = 'Partie en cours';
+    else if (room.started) status = 'Partie terminée';
+    else status = room.players > 0 ? 'En attente' : 'Libre';
+    btn.innerHTML = '<span class="room-name">Salle ' + room.id.replace('room-', '') + '</span>' +
+      '<span class="room-state">' + status + (room.started && !room.inProgress ? '' : ' · ' + freeTxt) + '</span>' +
+      (names ? '<span class="room-players">' + escapeHtml(names) + '</span>' : '');
+    btn.title = names ? 'Joueurs : ' + names : status;
+    if (room.inProgress) btn.classList.add('started');
+    if (free > 0 && (!room.started || room.inProgress)) {
+      if (room.inProgress) btn.title = 'Partie en cours : vous prendrez la place d\'un bot';
+      btn.addEventListener('click', () => joinRoom(room.id));
+    } else {
       btn.classList.add('full');
       btn.disabled = true;
-      btn.title = 'Salle complète';
-    } else {
-      btn.addEventListener('click', () => joinRoom(room.id));
     }
     roomsGrid.appendChild(btn);
   });
-  const humanRooms = rooms.filter(r => !r.started && r.players.length < 4);
-  roomStatus.textContent = humanRooms.length + ' salle(s) disponible(s)';
+  const open = rooms.filter(r => (r.freeSeats || 0) > 0 && (!r.started || r.inProgress));
+  roomStatus.textContent = open.length + ' salle(s) avec des places libres';
 });
 
 function joinRoom(roomId) {
@@ -225,6 +228,8 @@ function joinRoom(roomId) {
 socket.on('joined', (data) => {
   myPlayerId = data.playerId;
   currentRoomId = data.roomId;
+  // Partie en cours : l'état complet arrive juste après (game_state)
+  if (data.started) return;
   show(screens.waiting);
   setText('waiting-room-id', currentRoomId.replace('room-', ''));
   setText('waiting-room-title', 'Salle ' + currentRoomId.replace('room-', ''));
@@ -243,13 +248,12 @@ socket.on('player_left', (data) => {
     const updated = data.players.find((p) => p.id === data.leftId);
     if (updated) {
       playersById[updated.id] = Object.assign({}, old || {}, updated);
-      const seat = playerSeats[updated.id];
-      if (seat) setText('name-' + seat, updated.name);
-      renderMiniScores();
+      refreshSeatName(updated.id);
     }
     setText('game-msg', (old ? old.name : 'Un joueur') + ' a quitté la partie, un bot le remplace.');
     return;
   }
+  if (gameState) return;
   renderWaitingPlayers(data.players, data.host);
   setText('waiting-msg', 'Un joueur a quitté la salle.');
 });
@@ -402,6 +406,14 @@ socket.on('new_round', (data) => {
 
 socket.on('pass_complete', (data) => {
   gameState.phase = 'playing';
+  if (iAmPaused) {
+    // Le bot a validé à ma place : simple mise à jour de la main
+    myHand = data.hands[myPlayerId] || [];
+    renderHand(myHand);
+    hidePassControls();
+    disableHand();
+    return;
+  }
   setPassDirection(gameState.passingDirection);
   const oldHand = myHand.slice();
   myHand = data.hands[myPlayerId] || [];
@@ -488,6 +500,8 @@ socket.on('turn_changed', (data) => {
   // Le serveur peut annoncer deux fois le même tour : si ma carte est déjà
   // partie (en attente de confirmation), ne pas redonner la main.
   if (data.turn === myPlayerId && playPending) return;
+  // En pause : le bot joue à ma place, ne rien activer
+  if (iAmPaused) { isMyTurn = false; disableHand(); return; }
   isMyTurn = data.turn === myPlayerId;
   if (data.turn === myPlayerId) {
     setText('turn-name', 'C\'est votre tour');
@@ -562,12 +576,12 @@ socket.on('game_over', (data) => {
   }
   html += '</table>';
   showModal('Partie terminée', html);
+  setPaused(false);
   document.getElementById('modal-ok').onclick = () => {
     hideModal();
+    document.getElementById('modal-ok').onclick = null;
     socket.emit('leave_room', { roomId: currentRoomId });
-    show(screens.rooms);
-    currentRoomId = null;
-    loadRooms();
+    exitGame();
   };
 });
 
@@ -661,7 +675,7 @@ function renderOpponents(players) {
     const nameEl = document.getElementById('name-' + seat);
     const stackEl = document.getElementById('stack-' + seat);
     const countEl = document.getElementById('count-' + seat);
-    if (nameEl) nameEl.textContent = escapeHtml(p.name);
+    if (nameEl) nameEl.textContent = seatLabel(p);
     if (stackEl) stackEl.textContent = p.handCount;
     if (countEl) countEl.textContent = p.handCount + ' cartes';
     if (seats[seat] === null) seats[seat] = p;
@@ -1095,3 +1109,153 @@ function escapeHtml(text) {
   div.textContent = text;
   return div.innerHTML;
 }
+
+// --- Partie en cours : arrivée, pause, départ ---
+let iAmPaused = false;
+
+function seatLabel(p) {
+  return p.name + (p.paused ? ' (pause)' : '');
+}
+
+function refreshSeatName(pid) {
+  const p = findPlayer(pid);
+  const seat = playerSeats[pid];
+  if (p && seat && seat !== 'bottom') setText('name-' + seat, seatLabel(p));
+  renderMiniScores();
+}
+
+function updatePlayers(players) {
+  (players || []).forEach((p) => { playersById[p.id] = Object.assign({}, playersById[p.id] || {}, p); });
+}
+
+// Revenir à la liste des salles en oubliant la partie
+function exitGame() {
+  stopTurnTimer();
+  cancelTrickClear();
+  setPaused(false);
+  gameState = null;
+  myHand = [];
+  preselectedCard = null;
+  isMyTurn = false;
+  playPending = false;
+  awaitingPassValidation = false;
+  hidePassControls();
+  document.getElementById('trick-cards').innerHTML = '';
+  setText('score-mini', '');
+  currentRoomId = null;
+  show(screens.rooms);
+  loadRooms();
+}
+
+function setPaused(on) {
+  iAmPaused = on;
+  document.getElementById('pause-overlay').classList.toggle('hidden', !on);
+  document.getElementById('btn-pause').disabled = on;
+  document.getElementById('btn-resume').disabled = false;
+  if (on) {
+    clearPreselect();
+    deselectCard();
+    stopTurnTimer();
+    isMyTurn = false;
+    disableHand();
+  }
+}
+
+document.getElementById('btn-pause').addEventListener('click', () => {
+  if (!gameState || !currentRoomId || iAmPaused) return;
+  socket.emit('pause_game', { roomId: currentRoomId });
+});
+
+document.getElementById('btn-resume').addEventListener('click', () => {
+  if (!currentRoomId) return;
+  document.getElementById('btn-resume').disabled = true;
+  socket.emit('resume_game', { roomId: currentRoomId });
+});
+
+function quitGame() {
+  if (!currentRoomId) return;
+  const ok = window.confirm('Quitter la partie ?\nUn bot vous remplacera et vous serez classé dernier au Hall of Fame.');
+  if (!ok) return;
+  socket.emit('leave_room', { roomId: currentRoomId });
+  exitGame();
+}
+
+document.getElementById('btn-quit-game').addEventListener('click', quitGame);
+document.getElementById('btn-quit-paused').addEventListener('click', quitGame);
+
+socket.on('player_paused', (data) => {
+  updatePlayers(data.players);
+  if (data.playerId === myPlayerId) {
+    if (data.paused) {
+      setPaused(true);
+      setText('game-msg', 'Partie en pause : un bot joue à votre place.');
+    }
+    // La reprise est appliquée à la réception de game_state
+    return;
+  }
+  refreshSeatName(data.playerId);
+  setText('game-msg', data.paused
+    ? data.name + ' est en pause, un bot joue à sa place.'
+    : data.name + ' reprend la partie.');
+});
+
+socket.on('player_replaced', (data) => {
+  updatePlayers(data.players);
+  refreshSeatName(data.playerId);
+  setText('game-msg', data.name + ' rejoint la partie à la place de ' + data.replacedName + '.');
+});
+
+// État complet de la partie : arrivée en cours de partie ou reprise après une pause
+socket.on('game_state', (data) => {
+  myPlayerId = data.myId;
+  show(screens.game);
+  hideModal();
+  cancelTrickClear();
+  stopTurnTimer();
+  showingTrickWinner = false;
+  playPending = false;
+  awaitingPassValidation = false;
+  preselectedCard = null;
+  selectedCard = null;
+  passSelection = [];
+  updatePlayers(data.players);
+  const ledSuit = data.trickCards.length ? data.trickCards[0].card.suit : null;
+  gameState = {
+    scores: {},
+    round: data.round,
+    heartsBroken: data.heartsBroken,
+    passingDirection: data.passingDirection,
+    phase: data.phase,
+    ledSuit,
+  };
+  renderGame({ players: data.players, round: data.round, scores: data.scores });
+  setScoresRound(data.roundScores);
+  renderTrick(data.trickCards);
+  renderHand(data.hand);
+  setPaused(!!data.paused);
+  setPassDirection(data.passingDirection);
+  hidePassControls();
+  if (data.phase === 'passing') {
+    if (data.hasPassed) {
+      disableHand();
+      setText('game-msg', 'Cartes passées. En attente des autres joueurs...');
+    } else {
+      enableHand();
+      showPassControls();
+      setText('game-msg', passPrompt(data.passingDirection));
+    }
+    return;
+  }
+  isMyTurn = data.turn === myPlayerId && !data.paused;
+  if (isMyTurn) {
+    setText('turn-name', 'C\'est votre tour');
+    setText('game-msg', 'Jouez une carte.');
+    enableHand();
+    updatePlayableCards();
+    startTurnTimerUI(60);
+  } else {
+    setText('turn-name', 'Tour adverse');
+    setText('game-msg', 'Vous êtes dans la partie. En attente de votre tour...');
+    disableHand();
+  }
+});

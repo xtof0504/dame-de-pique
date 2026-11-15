@@ -323,4 +323,18 @@ function choosePass(hand) {
   return { cards: scored.slice(0, 3).map((x) => x.c), moon: false };
 }
 
-module.exports = { choosePlay, choosePass, isValidPlay, moonHandStrength };
+// --- Bot très faible (joueur en pause) : coups légaux au hasard ---
+const pickRandom = (cards) => cards[Math.floor(Math.random() * cards.length)];
+
+function chooseWeakPlay(ctx) {
+  return pickRandom(legalCards(ctx));
+}
+
+function chooseWeakPass(hand) {
+  const pool = [...hand];
+  const cards = [];
+  while (cards.length < 3 && pool.length) cards.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+  return { cards, moon: false };
+}
+
+module.exports = { choosePlay, choosePass, chooseWeakPlay, chooseWeakPass, isValidPlay, moonHandStrength };

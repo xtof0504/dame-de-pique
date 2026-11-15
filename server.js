@@ -121,23 +121,44 @@ for (let i = 1; i <= NB_ROOMS; i++) {
   initRoom('room-' + i);
 }
 
+// Chaque place (siège) a un identifiant fixe pendant toute la partie (p.id).
+// La connexion de l'humain qui l'occupe est p.socketId (null pour un bot) :
+// un humain peut ainsi reprendre la place d'un bot en cours de partie.
+function seatOf(room, socketId) {
+  if (!room) return null;
+  return room.players.find(p => !p.isBot && p.socketId === socketId) || null;
+}
+
 function getRoom(socketId) {
   for (const roomId of Object.keys(rooms)) {
     const room = rooms[roomId];
     // Un joueur remplacé par un bot n'appartient plus à la salle
-    if (room.players.find(p => p.id === socketId && !p.isBot)) return room;
+    if (seatOf(room, socketId)) return room;
   }
   return null;
+}
+
+// Place jouée automatiquement : bot, ou humain en pause (bot très faible)
+function isAuto(p) {
+  return p.isBot || !!p.paused;
+}
+
+function gameInProgress(room) {
+  return !!(room.started && room.game && !room.game.gameOver);
+}
+
+function publicPlayers(room) {
+  return room.players.map(p => ({ id: p.id, name: p.name, isBot: p.isBot, ready: p.ready, paused: !!p.paused, handCount: p.hand ? p.hand.length : 0 }));
 }
 
 function broadcastRoom(roomId, event, data) {
   const room = rooms[roomId];
   if (!room) return;
   for (const p of room.players) {
-    // Les bots n'ont pas de connexion (un humain remplacé par un bot garde
-    // son identifiant, mais ne doit plus recevoir les événements de la salle)
-    if (p.isBot) continue;
-    const sock = socketsById[p.id];
+    // Les bots n'ont pas de connexion (un humain en pause continue de
+    // recevoir les événements pour suivre la partie)
+    if (p.isBot || !p.socketId) continue;
+    const sock = socketsById[p.socketId];
     if (sock) sock.emit(event, data);
   }
 }
@@ -153,13 +174,22 @@ io.on('connection', (socket) => {
   socketsById[socket.id] = socket;
 
   socket.on('get_rooms', () => {
-    const list = Object.values(rooms).map((r) => ({
-      id: r.id,
-      players: r.players.length,
-      started: r.started,
-      playerNames: r.players.map(p => p.name),
-      hasHumans: r.players.some(p => !p.isBot),
-    }));
+    const list = Object.values(rooms).map((r) => {
+      const inProgress = gameInProgress(r);
+      // Places libres : sièges vides avant la partie, sièges tenus par un bot pendant
+      let freeSeats = 0;
+      if (!r.started) freeSeats = MAX_PLAYERS - r.players.length;
+      else if (inProgress) freeSeats = r.players.filter(p => p.isBot).length;
+      return {
+        id: r.id,
+        players: r.players.length,
+        started: r.started,
+        inProgress,
+        freeSeats,
+        playerNames: r.players.filter(p => !p.isBot).map(p => p.name),
+        hasHumans: r.players.some(p => !p.isBot),
+      };
+    });
     socket.emit('rooms_list', list);
   });
 
@@ -178,7 +208,7 @@ io.on('connection', (socket) => {
       return;
     }
     if (room.started) {
-      socket.emit('error_msg', { message: 'La partie a déjà commencé dans cette salle.' });
+      joinGameInProgress(socket, room, name.trim());
       return;
     }
     if (room.players.length >= MAX_PLAYERS) {
@@ -195,9 +225,9 @@ io.on('connection', (socket) => {
       leaveRoomInternal(socket.id, prevRoom.id);
     }
 
-    const isBot = false;
     const player = {
       id: socket.id,
+      socketId: socket.id,
       name: name.trim(),
       isBot: false,
       ready: false,
@@ -231,8 +261,8 @@ io.on('connection', (socket) => {
   socket.on('set_ready', ({ roomId, ready }) => {
     const room = rooms[roomId];
     if (!room) return;
-    const player = room.players.find(p => p.id === socket.id);
-    if (!player || player.isBot) return;
+    const player = seatOf(room, socket.id);
+    if (!player) return;
     player.ready = ready;
     broadcastRoom(room.id, 'player_ready', {
       players: room.players.map(p => ({ id: p.id, name: p.name, isBot: p.isBot, ready: p.ready })),
@@ -243,7 +273,8 @@ io.on('connection', (socket) => {
   socket.on('start_game', ({ roomId }) => {
     const room = rooms[roomId];
     if (!room) return;
-    if (room.host !== socket.id) {
+    const me = seatOf(room, socket.id);
+    if (!me || room.host !== me.id) {
       socket.emit('error_msg', { message: 'Seul l\'hôte peut démarrer la partie.' });
       return;
     }
@@ -254,11 +285,10 @@ io.on('connection', (socket) => {
     const room = rooms[roomId];
     if (!room || !room.started || !room.game) return;
     const game = room.game;
-    if (game.turn !== socket.id) return;
+    const player = seatOf(room, socket.id);
+    if (!player || player.paused) return;
+    if (game.turn !== player.id) return;
     if (game.phase !== 'playing') return;
-
-    const player = room.players.find(p => p.id === socket.id);
-    if (!player) return;
 
     // Refus d'une carte : prévenir le joueur pour qu'il puisse en jouer une autre
     const reject = (message) => socket.emit('error_msg', { message, playRejected: true });
@@ -268,7 +298,7 @@ io.on('connection', (socket) => {
 
     const ledSuit = game.trickCards.length > 0 ? game.trickCards[0].card.suit : null;
     if (!isValidPlay(player.hand, card, ledSuit, game.heartsBroken)) return reject('Cette carte ne peut pas être jouée.');
-    if (game.mustPass && game.mustPass[socket.id]) {
+    if (game.mustPass && game.mustPass[player.id]) {
       return reject('Vous devez passer une carte en premier.');
     }
 
@@ -280,24 +310,7 @@ io.on('connection', (socket) => {
       }
     }
 
-    const playedCard = player.hand.splice(cardIdx, 1)[0];
-    game.trickCards.push({ playerId: socket.id, card: playedCard });
-    if (playedCard.suit === 'hearts') game.heartsBroken = true;
-
-    resetTurnTimers(room);
-    broadcastRoom(room.id, 'card_played', {
-      playerId: socket.id,
-      card: playedCard,
-      trickCards: game.trickCards.map(tc => ({ playerId: tc.playerId, card: tc.card })),
-      heartsBroken: game.heartsBroken,
-    });
-
-    if (game.trickCards.length === MAX_PLAYERS) {
-      resolveTrick(room);
-    } else {
-      advanceTurn(room);
-      startTurnTimer(room);
-    }
+    playCardLogic(room, player.id, card);
   });
 
   socket.on('pass_cards', ({ roomId, cards }) => {
@@ -305,51 +318,56 @@ io.on('connection', (socket) => {
     if (!room || !room.started || !room.game) return;
     const game = room.game;
     if (game.phase !== 'passing') return;
-    if (game.passedCards[socket.id]) return;
-    if (cards.length !== 3) {
+    const player = seatOf(room, socket.id);
+    if (!player || player.paused) return;
+    if (game.passedCards[player.id]) return;
+    if (!Array.isArray(cards) || cards.length !== 3) {
       socket.emit('error_msg', { message: 'Vous devez passer exactement 3 cartes.' });
       return;
     }
-    const player = room.players.find(p => p.id === socket.id);
-    if (!player) return;
     for (const c of cards) {
       if (!player.hand.find(h => sameCard(h, c))) {
         socket.emit('error_msg', { message: 'Carte invalide pour la passe.' });
         return;
       }
     }
-    game.passedCards[socket.id] = cards;
-    broadcastRoom(room.id, 'cards_passed', { playerId: socket.id });
-
-    const allPassed = Object.keys(game.passedCards).length === MAX_PLAYERS;
-    if (allPassed) {
-      completePass(room);
-    } else {
-      // Faire passer automatiquement les bots restants
-      const remainingBots = room.players.filter(p => !game.passedCards[p.id] && p.isBot);
-      for (const bot of remainingBots) {
-        const passCards = selectPassCardsFor(room, bot);
-        game.passedCards[bot.id] = passCards;
-        for (const c of passCards) {
-          const idx = bot.hand.findIndex(h => sameCard(h, c));
-          if (idx !== -1) bot.hand.splice(idx, 1);
-        }
-        broadcastRoom(room.id, 'cards_passed', { playerId: bot.id });
-      }
-      const allPassedNow = Object.keys(game.passedCards).length === MAX_PLAYERS;
-      if (allPassedNow) completePass(room);
-    }
+    game.passedCards[player.id] = cards;
+    broadcastRoom(room.id, 'cards_passed', { playerId: player.id });
+    // Les places jouées automatiquement passent à leur tour
+    autoPassRemaining(room);
   });
 
   socket.on('pass_validated', ({ roomId }) => {
     const room = rooms[roomId];
     if (!room || !room.game) return;
-    room.game.passValidations[socket.id] = true;
-    const humans = room.players.filter(p => !p.isBot);
-    const allValidated = humans.every(p => room.game.passValidations[p.id]);
-    if (allValidated) {
-      startTurnTimer(room);
-    }
+    const player = seatOf(room, socket.id);
+    if (!player) return;
+    room.game.passValidations[player.id] = true;
+    if (allPassValidated(room)) startTurnTimer(room);
+  });
+
+  // Pause : un bot très faible joue à la place du joueur jusqu'à ce qu'il reprenne
+  socket.on('pause_game', ({ roomId }) => {
+    const room = rooms[roomId];
+    if (!room || !gameInProgress(room)) return;
+    const player = seatOf(room, socket.id);
+    if (!player || player.paused) return;
+    player.paused = true;
+    broadcastRoom(room.id, 'player_paused', { playerId: player.id, name: player.name, paused: true, players: publicPlayers(room) });
+    resumeAfterReplacement(room, player);
+  });
+
+  socket.on('resume_game', ({ roomId }) => {
+    const room = rooms[roomId];
+    if (!room || !gameInProgress(room)) return;
+    const player = seatOf(room, socket.id);
+    if (!player || !player.paused) return;
+    player.paused = false;
+    // Le bot a pu valider les cartes reçues à sa place : rien à valider en reprenant
+    room.game.passValidations[player.id] = true;
+    broadcastRoom(room.id, 'player_paused', { playerId: player.id, name: player.name, paused: false, players: publicPlayers(room) });
+    socket.emit('game_state', gameSnapshot(room, player));
+    // Si c'était son tour, le minuteur du bot lui rend la main (voir botPlay)
   });
 
   socket.on('leave_room', ({ roomId }) => {
@@ -369,64 +387,159 @@ io.on('connection', (socket) => {
 function leaveRoomInternal(socketId, roomId) {
   const room = rooms[roomId];
   if (!room) return;
-  const leaver = room.players.find(p => p.id === socketId && !p.isBot);
+  const leaver = seatOf(room, socketId);
   if (!leaver) return;
   socketLeave(roomId, socketId);
 
-  const gameInProgress = room.started && room.game && !room.game.gameOver;
-  if (gameInProgress) {
-    // Partie en cours : un bot remplace le joueur (même main, même score)
+  const inProgress = gameInProgress(room);
+  if (inProgress) {
+    // Partie en cours : un bot remplace le joueur (même main, même score).
+    // Le joueur parti sera classé dernier parmi les humains (Hall of Fame).
+    if (!room.game.leavers) room.game.leavers = [];
+    room.game.leavers.push(leaver.name);
     leaver.isBot = true;
+    leaver.paused = false;
+    leaver.socketId = null;
     leaver.name = leaver.name + ' (bot)';
   } else {
-    room.players = room.players.filter(p => p.id !== socketId);
+    room.players = room.players.filter(p => p !== leaver);
   }
 
   // Plus aucun humain (seulement des bots, ou personne) : libérer la salle
   const humans = room.players.filter(p => !p.isBot);
   if (humans.length === 0) {
+    // Tous les humains ont quitté une partie en cours : la pénalité s'applique
+    if (inProgress) recordGameResult(room);
     resetRoom(roomId);
     return;
   }
 
-  if (room.host === socketId) room.host = humans[0].id;
+  if (room.host === leaver.id) room.host = humans[0].id;
   broadcastRoom(room.id, 'player_left', {
-    players: room.players.map(p => ({ id: p.id, name: p.name, isBot: p.isBot, ready: p.ready })),
+    players: publicPlayers(room),
     host: room.host,
-    leftId: socketId,
-    replacedByBot: gameInProgress,
+    leftId: leaver.id,
+    replacedByBot: inProgress,
   });
 
-  if (gameInProgress) resumeAfterReplacement(room, leaver);
+  if (inProgress) resumeAfterReplacement(room, leaver);
 }
 
-// Après le remplacement d'un humain par un bot, débloquer la partie
-// si elle attendait une action de ce joueur.
-function resumeAfterReplacement(room, bot) {
+// Un humain rejoint une partie en cours : il prend la place d'un bot.
+// S'il avait quitté cette partie, il retrouve sa place (et n'est plus pénalisé).
+function joinGameInProgress(socket, room, name) {
+  if (!gameInProgress(room)) {
+    socket.emit('error_msg', { message: 'La partie de cette salle est terminée.' });
+    return;
+  }
+  if (room.players.find(p => !p.isBot && p.name === name)) {
+    socket.emit('error_msg', { message: 'Ce surnom est déjà pris dans cette salle.' });
+    return;
+  }
+  const bots = room.players.filter(p => p.isBot);
+  const seat = bots.find(p => p.name === name + ' (bot)') || bots[0];
+  if (!seat) {
+    socket.emit('error_msg', { message: 'Plus de place libre dans cette partie.' });
+    return;
+  }
+
+  const prevRoom = getRoom(socket.id);
+  if (prevRoom) leaveRoomInternal(socket.id, prevRoom.id);
+
+  const game = room.game;
+  const replacedName = seat.name;
+  seat.isBot = false;
+  seat.paused = false;
+  seat.socketId = socket.id;
+  seat.name = name;
+  seat.ready = true;
+  if (game.botMoon) game.botMoon[seat.id] = false;
+  if (game.leavers) game.leavers = game.leavers.filter(n => n !== name);
+  // Le bot a déjà validé les cartes reçues : rien à valider pour le nouveau venu
+  game.passValidations[seat.id] = true;
+  socket.join(room.id);
+
+  socket.emit('joined', {
+    playerId: seat.id,
+    name: seat.name,
+    roomId: room.id,
+    players: publicPlayers(room),
+    host: room.host,
+    started: true,
+  });
+  socket.emit('game_state', gameSnapshot(room, seat));
+  for (const p of room.players) {
+    if (p === seat || p.isBot || !p.socketId) continue;
+    socketEmitTo(p.socketId, 'player_replaced', {
+      playerId: seat.id,
+      name: seat.name,
+      replacedName,
+      players: publicPlayers(room),
+    });
+  }
+  // Si c'était le tour de cette place, le minuteur du bot lui rend la main (voir botPlay)
+}
+
+// État complet de la partie vu par un joueur (reprise après pause, arrivée en cours de partie)
+function gameSnapshot(room, seat) {
+  const game = room.game;
+  const passed = game.passedCards[seat.id];
+  let hand = seat.hand.slice();
+  // Cartes déjà données mais pas encore échangées : ne plus les montrer
+  if (game.phase === 'passing' && passed) hand = hand.filter(c => !passed.some(x => sameCard(x, c)));
+  return {
+    myId: seat.id,
+    players: publicPlayers(room),
+    hand,
+    trickCards: game.trickCards.map(tc => ({ playerId: tc.playerId, card: tc.card })),
+    heartsBroken: game.heartsBroken,
+    phase: game.phase,
+    passingDirection: game.passingDirection,
+    hasPassed: !!passed,
+    round: game.round,
+    scores: game.scores,
+    roundScores: game.roundScores,
+    turn: game.turn,
+    paused: !!seat.paused,
+  };
+}
+
+// Les places jouées automatiquement (bots, joueurs en pause) passent leurs cartes
+function autoPassRemaining(room) {
+  const game = room.game;
+  if (!game || game.phase !== 'passing') return;
+  for (const p of room.players) {
+    if (game.passedCards[p.id] || !isAuto(p)) continue;
+    const passCards = selectPassCardsFor(room, p);
+    game.passedCards[p.id] = passCards;
+    for (const c of passCards) {
+      const idx = p.hand.findIndex(h => sameCard(h, c));
+      if (idx !== -1) p.hand.splice(idx, 1);
+    }
+    broadcastRoom(room.id, 'cards_passed', { playerId: p.id });
+  }
+  if (Object.keys(game.passedCards).length === MAX_PLAYERS) completePass(room);
+}
+
+// Tous les humains présents ont-ils validé les cartes reçues ?
+function allPassValidated(room) {
+  return room.players.filter(p => !isAuto(p)).every(p => room.game.passValidations[p.id]);
+}
+
+// Après le remplacement d'un humain par un bot (départ ou pause), débloquer
+// la partie si elle attendait une action de ce joueur.
+function resumeAfterReplacement(room, seat) {
   const game = room.game;
   if (game.phase === 'passing') {
-    // Le bot passe ses cartes s'il ne l'avait pas encore fait
-    if (!game.passedCards[bot.id]) {
-      const passCards = selectPassCardsFor(room, bot);
-      game.passedCards[bot.id] = passCards;
-      for (const c of passCards) {
-        const idx = bot.hand.findIndex(h => sameCard(h, c));
-        if (idx !== -1) bot.hand.splice(idx, 1);
-      }
-      broadcastRoom(room.id, 'cards_passed', { playerId: bot.id });
-      if (Object.keys(game.passedCards).length === MAX_PLAYERS) completePass(room);
-    }
+    // Le bot passe les cartes s'il ne l'avait pas encore fait
+    autoPassRemaining(room);
     return;
   }
   // Phase de jeu : on attendait peut-être sa validation des cartes reçues
-  const waitingForBot = !game.passValidations[bot.id];
-  game.passValidations[bot.id] = true;
-  const humans = room.players.filter(p => !p.isBot);
-  const allValidated = humans.every(p => game.passValidations[p.id]);
-  if (waitingForBot && allValidated) {
-    startTurnTimer(room);
-  } else if (game.turn === bot.id) {
-    // C'était son tour : le bot joue à sa place
+  const waitingForSeat = !game.passValidations[seat.id];
+  game.passValidations[seat.id] = true;
+  if (allPassValidated(room) && (waitingForSeat || game.turn === seat.id)) {
+    // Relancer le tour (le bot joue à sa place si c'était son tour)
     startTurnTimer(room);
   }
 }
@@ -455,7 +568,9 @@ function startGame(roomId) {
 
   const humans = room.players.filter(p => !p.isBot);
   const botsNeeded = MAX_PLAYERS - humans.length;
-  const botNames = ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve', 'Frank', 'Grace', 'Hugo', 'Iris', 'Jack'];
+  // Noms de bots différents de ceux des humains de la salle
+  const botNames = ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve', 'Frank', 'Grace', 'Hugo', 'Iris', 'Jack']
+    .filter(n => !humans.some(h => h.name.toLowerCase() === n.toLowerCase()));
   let botIdx = 0;
   for (let i = 0; i < botsNeeded; i++) {
     const bot = {
@@ -494,11 +609,9 @@ function startGame(roomId) {
     passingDirection: room.game.passingDirection,
   });
 
-  if (room.game.passingDirection !== 'none') {
-    startTurnTimer(room);
-  } else {
-    startTurnTimer(room);
-  }
+  // Les places automatiques passent leurs cartes tout de suite
+  autoPassRemaining(room);
+  startTurnTimer(room);
 }
 
 function shufflePlayers(room) {
@@ -636,12 +749,8 @@ function resolveTrick(room) {
     endRound(room);
   } else {
     // Laisser le temps aux clients d'afficher le pli terminé avant le suivant
-    resetTurnTimers(room);
-    const currentGame = room.game;
-    room.turnTimer = setTimeout(() => {
-      if (room.game !== currentGame) return;
-      startTurnTimer(room);
-    }, TRICK_PAUSE_MS);
+    game.pauseUntil = Date.now() + TRICK_PAUSE_MS;
+    startTurnTimer(room);
   }
 }
 
@@ -726,6 +835,7 @@ function endRound(room) {
       passingDirection: game.passingDirection,
     });
 
+    autoPassRemaining(room);
     startTurnTimer(room);
   }
 }
@@ -777,22 +887,27 @@ function computeHumanPoints(results) {
   return points;
 }
 
-// Enregistre une partie terminée normalement.
+// Enregistre le résultat d'une partie pour les humains.
 // Seules les parties avec au moins 2 humains comptent (contre des bots seulement :
-// les statistiques ne changent pas).
+// les statistiques ne changent pas). Les joueurs qui ont quitté la partie en cours
+// sont classés derniers (le premier parti est le dernier du classement).
+const LEAVER_RANK_BASE = 1e9;
 function recordGameResult(room) {
   const game = room.game;
   const humans = room.players.filter(p => !p.isBot);
-  if (humans.length < 2) return;
-  const results = humans.map(p => ({ name: p.name, score: game.scores[p.id] }));
+  const leavers = (game.leavers || []).filter((n, i, arr) => arr.lastIndexOf(n) === i && !humans.some(h => h.name === n));
+  if (humans.length + leavers.length < 2) return;
+  const results = humans.map(p => ({ name: p.name, score: game.scores[p.id], finished: true }));
+  leavers.forEach((n, i) => results.push({ name: n, score: LEAVER_RANK_BASE + (leavers.length - i), finished: false }));
   const points = computeHumanPoints(results);
-  const bestHumanScore = Math.min(...results.map(r => r.score));
+  const finishers = results.filter(r => r.finished);
+  const bestHumanScore = finishers.length ? Math.min(...finishers.map(r => r.score)) : null;
   for (const r of results) {
     const stats = hallOfFame.players[r.name] || { name: r.name };
     stats.points = (stats.points || 0) + points[r.name];
     stats.games = (stats.games || 0) + 1;
-    stats.wins = (stats.wins || 0) + (r.score === bestHumanScore ? 1 : 0);
-    if (stats.bestScore === undefined || stats.bestScore === null || r.score < stats.bestScore) stats.bestScore = r.score;
+    stats.wins = (stats.wins || 0) + (r.finished && r.score === bestHumanScore ? 1 : 0);
+    if (r.finished && (stats.bestScore === undefined || stats.bestScore === null || r.score < stats.bestScore)) stats.bestScore = r.score;
     stats.lastPlayed = new Date().toISOString();
     hallOfFame.players[r.name] = stats;
   }
@@ -857,7 +972,9 @@ function completePass(room) {
     hands: room.players.reduce((acc, p) => { acc[p.id] = p.hand; return acc; }, {}),
     currentTurn: game.turn,
   });
-  // Le timer est démarré quand tous les joueurs ont validé (socket pass_validated)
+  // Le timer est démarré quand tous les joueurs ont validé (socket pass_validated),
+  // ou tout de suite s'il n'y a aucun humain actif à attendre
+  if (allPassValidated(room)) startTurnTimer(room);
 }
 
 // --- Choix des bots (voir server/bot-ai.js) ---
@@ -881,11 +998,14 @@ function botContext(room, player, allowMoon) {
 
 // allowMoon = false pour un humain dont le temps est écoulé (on joue prudemment pour lui)
 function selectPlayCardFor(room, player, allowMoon = true) {
-  return botAI.choosePlay(botContext(room, player, allowMoon));
+  const ctx = botContext(room, player, allowMoon);
+  // Joueur en pause : bot très faible (coup légal au hasard)
+  if (player.paused) return botAI.chooseWeakPlay(ctx);
+  return botAI.choosePlay(ctx);
 }
 
 function selectPassCardsFor(room, player) {
-  const { cards, moon } = botAI.choosePass(player.hand);
+  const { cards, moon } = player.paused ? botAI.chooseWeakPass(player.hand) : botAI.choosePass(player.hand);
   if (!room.game.botMoon) room.game.botMoon = {};
   room.game.botMoon[player.id] = moon;
   return cards;
@@ -896,9 +1016,17 @@ function startTurnTimer(room) {
   if (!room.started || !room.game) return;
   const game = room.game;
   if (game.gameOver || game.phase === 'passing') return;
+  // Pli terminé encore affiché chez les clients : attendre la fin de la pause
+  const wait = (game.pauseUntil || 0) - Date.now();
+  if (wait > 0) {
+    room.turnTimer = setTimeout(() => {
+      if (room.game === game) startTurnTimer(room);
+    }, wait);
+    return;
+  }
   const current = room.players.find(p => p.id === game.turn);
   notifyTurn(room);
-  if (!current || current.isBot) {
+  if (!current || isAuto(current)) {
     room.turnTimer = setTimeout(() => botPlay(room), 1500);
     return;
   }
@@ -913,13 +1041,13 @@ function botPlay(room) {
   const game = room.game;
   if (!room.started || !room.game || game.gameOver) return;
   const current = room.players.find(p => p.id === game.turn);
-  if (!current || !current.isBot) return;
-
-  if (game.phase === 'passing') {
-    const passCards = selectPassCardsFor(room, current);
-    playCardLogicPass(room, current.id, passCards);
+  if (!current) return;
+  if (!isAuto(current)) {
+    // Un humain a repris cette place (reprise après pause, arrivée en cours de partie)
+    startTurnTimer(room);
     return;
   }
+  if (game.phase === 'passing') return;
 
   const card = selectPlayCardFor(room, current);
   if (card) playCardLogic(room, current.id, card);
@@ -959,21 +1087,6 @@ function playCardLogic(room, socketId, card) {
     advanceTurn(room);
     startTurnTimer(room);
   }
-}
-
-function playCardLogicPass(room, socketId, cards) {
-  const game = room.game;
-  const player = room.players.find(p => p.id === socketId);
-  if (!player) return;
-  for (const c of cards) {
-    const idx = player.hand.findIndex(h => sameCard(h, c));
-    if (idx !== -1) player.hand.splice(idx, 1);
-  }
-  game.passedCards[socketId] = cards;
-  broadcastRoom(room.id, 'cards_passed', { playerId: socketId });
-
-  const allPassed = Object.keys(game.passedCards).length === MAX_PLAYERS;
-  if (allPassed) completePass(room);
 }
 
 function socketEmitTo(socketId, event, data) {
