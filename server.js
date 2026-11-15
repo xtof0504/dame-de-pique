@@ -89,10 +89,22 @@ function initRoom(roomId) {
   };
 }
 
+// Remet une salle à zéro : arrête ses minuteurs (y compris ceux des bots)
+// et la rend de nouveau disponible dans la liste.
+function resetRoom(roomId) {
+  const room = rooms[roomId];
+  if (room) {
+    if (room.timer) clearTimeout(room.timer);
+    if (room.turnTimer) clearTimeout(room.turnTimer);
+    room.started = false;
+    room.game = null;
+  }
+  initRoom(roomId);
+}
+
 function closeRoom(roomId) {
   const room = rooms[roomId];
   if (!room) return;
-  if (room.timer) clearTimeout(room.timer);
   for (const p of room.players) {
     const sock = socketsById[p.id];
     if (sock) {
@@ -100,7 +112,7 @@ function closeRoom(roomId) {
       sock.leave(roomId);
     }
   }
-  delete rooms[roomId];
+  resetRoom(roomId);
 }
 
 for (let i = 1; i <= NB_ROOMS; i++) {
@@ -110,7 +122,8 @@ for (let i = 1; i <= NB_ROOMS; i++) {
 function getRoom(socketId) {
   for (const roomId of Object.keys(rooms)) {
     const room = rooms[roomId];
-    if (room.players.find(p => p.id === socketId)) return room;
+    // Un joueur remplacé par un bot n'appartient plus à la salle
+    if (room.players.find(p => p.id === socketId && !p.isBot)) return room;
   }
   return null;
 }
@@ -119,6 +132,9 @@ function broadcastRoom(roomId, event, data) {
   const room = rooms[roomId];
   if (!room) return;
   for (const p of room.players) {
+    // Les bots n'ont pas de connexion (un humain remplacé par un bot garde
+    // son identifiant, mais ne doit plus recevoir les événements de la salle)
+    if (p.isBot) continue;
     const sock = socketsById[p.id];
     if (sock) sock.emit(event, data);
   }
@@ -346,22 +362,65 @@ io.on('connection', (socket) => {
 function leaveRoomInternal(socketId, roomId) {
   const room = rooms[roomId];
   if (!room) return;
-  room.players = room.players.filter(p => p.id !== socketId);
+  const leaver = room.players.find(p => p.id === socketId && !p.isBot);
+  if (!leaver) return;
   socketLeave(roomId, socketId);
-  if (room.players.length === 0) {
-    if (room.timer) clearTimeout(room.timer);
-    delete rooms[roomId];
-    initRoom(roomId);
+
+  const gameInProgress = room.started && room.game && !room.game.gameOver;
+  if (gameInProgress) {
+    // Partie en cours : un bot remplace le joueur (même main, même score)
+    leaver.isBot = true;
+    leaver.name = leaver.name + ' (bot)';
   } else {
-    if (room.host === socketId) room.host = room.players[0].id;
-    broadcastRoom(room.id, 'player_left', {
-      players: room.players.map(p => ({ id: p.id, name: p.name, isBot: p.isBot, ready: p.ready })),
-      host: room.host,
-      leftId: socketId,
-    });
-    if (room.started && room.game) {
-      endGame(room, 'disconnect');
+    room.players = room.players.filter(p => p.id !== socketId);
+  }
+
+  // Plus aucun humain (seulement des bots, ou personne) : libérer la salle
+  const humans = room.players.filter(p => !p.isBot);
+  if (humans.length === 0) {
+    resetRoom(roomId);
+    return;
+  }
+
+  if (room.host === socketId) room.host = humans[0].id;
+  broadcastRoom(room.id, 'player_left', {
+    players: room.players.map(p => ({ id: p.id, name: p.name, isBot: p.isBot, ready: p.ready })),
+    host: room.host,
+    leftId: socketId,
+    replacedByBot: gameInProgress,
+  });
+
+  if (gameInProgress) resumeAfterReplacement(room, leaver);
+}
+
+// Après le remplacement d'un humain par un bot, débloquer la partie
+// si elle attendait une action de ce joueur.
+function resumeAfterReplacement(room, bot) {
+  const game = room.game;
+  if (game.phase === 'passing') {
+    // Le bot passe ses cartes s'il ne l'avait pas encore fait
+    if (!game.passedCards[bot.id]) {
+      const passCards = selectPassCards(bot.hand);
+      game.passedCards[bot.id] = passCards;
+      for (const c of passCards) {
+        const idx = bot.hand.findIndex(h => sameCard(h, c));
+        if (idx !== -1) bot.hand.splice(idx, 1);
+      }
+      broadcastRoom(room.id, 'cards_passed', { playerId: bot.id });
+      if (Object.keys(game.passedCards).length === MAX_PLAYERS) completePass(room);
     }
+    return;
+  }
+  // Phase de jeu : on attendait peut-être sa validation des cartes reçues
+  const waitingForBot = !game.passValidations[bot.id];
+  game.passValidations[bot.id] = true;
+  const humans = room.players.filter(p => !p.isBot);
+  const allValidated = humans.every(p => game.passValidations[p.id]);
+  if (waitingForBot && allValidated) {
+    startTurnTimer(room);
+  } else if (game.turn === bot.id) {
+    // C'était son tour : le bot joue à sa place
+    startTurnTimer(room);
   }
 }
 
@@ -630,12 +689,17 @@ function endRound(room) {
     endGame(room, 'normal');
   } else {
     game.round += 1;
-    game.phase = 'passing';
+    // Manche sans passe (1 manche sur 4) : on joue directement
+    const noPass = game.passingDirection === 'none';
+    game.phase = noPass ? 'playing' : 'passing';
     game.trickCards = [];
     game.heartsBroken = false;
     game.currentTrickWinner = null;
     game.passedCards = {};
-    for (const p of room.players) game.mustPass[p.id] = true;
+    // Les points de manche repartent de zéro
+    for (const p of room.players) game.roundScores[p.id] = 0;
+    for (const p of room.players) game.mustPass[p.id] = !noPass;
+    for (const p of room.players) game.passValidations[p.id] = noPass;
     dealCards(room);
     const firstPlayer = room.players.find(p =>
       p.hand.find(c => c.suit === 'clubs' && c.rank === '2')
@@ -797,7 +861,6 @@ function botPlay(room) {
 
   if (game.phase === 'passing') {
     const passCards = selectPassCards(current.hand);
-    socketEmitTo(current.id, 'bot_pass', { cards: passCards });
     playCardLogicPass(room, current.id, passCards);
     return;
   }

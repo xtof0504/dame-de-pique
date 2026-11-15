@@ -194,6 +194,18 @@ socket.on('player_joined', (data) => {
 });
 
 socket.on('player_left', (data) => {
+  if (data.replacedByBot) {
+    // Partie en cours : le joueur parti est remplacé par un bot
+    const old = findPlayer(data.leftId);
+    const updated = data.players.find((p) => p.id === data.leftId);
+    if (updated) {
+      playersById[updated.id] = Object.assign({}, old || {}, updated);
+      const seat = playerSeats[updated.id];
+      if (seat) setText('name-' + seat, updated.name);
+    }
+    setText('game-msg', (old ? old.name : 'Un joueur') + ' a quitté la partie, un bot le remplace.');
+    return;
+  }
   renderWaitingPlayers(data.players, data.host);
   setText('waiting-msg', 'Un joueur a quitté la salle.');
 });
@@ -302,20 +314,31 @@ socket.on('game_started', (data) => {
 });
 
 socket.on('new_round', (data) => {
+  const noPass = data.passingDirection === 'none';
   gameState.round = data.round;
   gameState.heartsBroken = false;
-  gameState.phase = 'passing';
+  gameState.ledSuit = null;
+  gameState.phase = noPass ? 'playing' : 'passing';
   gameState.passingDirection = data.passingDirection;
   setPassDirection(data.passingDirection);
   setText('round-badge', 'Round ' + data.round);
   myHand = data.hands[myPlayerId] || [];
+  passSelection = [];
+  selectedCard = null;
   renderScores(data.scores);
   renderHand(myHand);
   cancelTrickClear();
   showingTrickWinner = false;
   document.getElementById('trick-cards').innerHTML = '';
-  setText('game-msg', passPrompt(data.passingDirection));
-  showPassControls();
+  if (noPass) {
+    // Pas de passe : la manche commence directement (turn_changed suit)
+    hidePassControls();
+    disableHand();
+    setText('game-msg', 'Pas de passe pour cette manche.');
+  } else {
+    setText('game-msg', passPrompt(data.passingDirection));
+    showPassControls();
+  }
 });
 
 socket.on('pass_complete', (data) => {
