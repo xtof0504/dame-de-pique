@@ -254,22 +254,23 @@ io.on('connection', (socket) => {
     const player = room.players.find(p => p.id === socket.id);
     if (!player) return;
 
+    // Refus d'une carte : prévenir le joueur pour qu'il puisse en jouer une autre
+    const reject = (message) => socket.emit('error_msg', { message, playRejected: true });
+
     const cardIdx = player.hand.findIndex(c => sameCard(c, card));
-    if (cardIdx === -1) return;
+    if (cardIdx === -1) return reject('Cette carte n\'est pas dans votre main.');
 
     const ledSuit = game.trickCards.length > 0 ? game.trickCards[0].card.suit : null;
-    if (!isValidPlay(player.hand, card, ledSuit, game.heartsBroken)) return;
+    if (!isValidPlay(player.hand, card, ledSuit, game.heartsBroken)) return reject('Cette carte ne peut pas être jouée.');
     if (game.mustPass && game.mustPass[socket.id]) {
-      socket.emit('error_msg', { message: 'Vous devez passer une carte en premier.' });
-      return;
+      return reject('Vous devez passer une carte en premier.');
     }
 
     // Premier coup du round: le joueur doit ouvrir avec le 2 de trèfle s'il le détient
     if (game.trickCards.length === 0) {
       const hasTwoClubs = player.hand.some(c => c.suit === 'clubs' && c.rank === '2');
       if (hasTwoClubs && !(card.suit === 'clubs' && card.rank === '2')) {
-        socket.emit('error_msg', { message: 'Vous devez ouvrir le pli avec le 2 de trèfle.' });
-        return;
+        return reject('Vous devez ouvrir le pli avec le 2 de trèfle.');
       }
     }
 

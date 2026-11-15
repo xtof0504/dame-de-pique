@@ -103,10 +103,19 @@
     .scores-table th { background: #f9fafb; font-weight: 800; }
     .turn-timer { font-size: 14px; font-weight: 800; color: var(--danger); background: #fff; border: 1px solid #e5e7eb; border-radius: 20px; padding: 4px 10px; }
     .game-card.playable { border-color: var(--success); background: #d1fae5; --lift: 8px; box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.3); }
+    .game-card.preselected { border-color: #f59e0b; background: #fef3c7; --lift: 16px; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.55); }
     .game-card.playable.selected { border-color: var(--primary); background: #dbeafe; --lift: 16px; box-shadow: 0 8px 16px rgba(37,99,235,0.35); }
 
     /* Table layout */
-    .table-layout { display: grid; grid-template-rows: 80px 1fr auto; grid-template-columns: 120px minmax(0, 1fr) 120px; gap: 4px; min-height: calc(100vh - 240px); width: 100%; }
+    .table-layout { display: grid; grid-template-rows: 80px 1fr auto; grid-template-columns: 120px minmax(0, 1fr) 120px; gap: 4px; min-height: calc(100vh - 240px); width: 100%; position: relative; }
+    /* Scores en petit, coin haut gauche de la table */
+    .score-mini { position: absolute; top: 0; left: 0; z-index: 5; max-width: calc(50% - 34px); padding: 4px 7px; border-radius: 6px; background: rgba(0,0,0,0.28); color: #fff; font-size: 11px; line-height: 1.4; pointer-events: none; }
+    .score-mini:empty { display: none; }
+    .score-mini-row { display: flex; justify-content: space-between; gap: 8px; }
+    .score-mini-row.me { font-weight: 700; }
+    .score-mini-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+    .score-mini-val { white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .score-mini-val small { opacity: 0.75; font-size: 10px; }
     .seat { display: flex; flex-direction: column; align-items: center; justify-content: center; }
     .seat.top-seat { grid-row: 1; grid-column: 2; }
     .seat.left-seat { grid-row: 2; grid-column: 1; margin-right: 124px; }
@@ -179,6 +188,7 @@
         </div>
         <div class="scores hidden" id="scores"></div>
         <div class="table-layout">
+          <div class="score-mini" id="score-mini"></div>
           <div class="seat top-seat" id="seat-top">
             <div class="opponent-hand">
               <div class="opponent-name" id="name-top"></div>
@@ -236,7 +246,7 @@
 <script>
   (function () {
     var c = document.createElement('script');
-    c.src = 'js/client.js?v=29';
+    c.src = 'js/client.js?v=32';
     document.head.appendChild(c);
   })();
 </script>

@@ -202,6 +202,7 @@ socket.on('player_left', (data) => {
       playersById[updated.id] = Object.assign({}, old || {}, updated);
       const seat = playerSeats[updated.id];
       if (seat) setText('name-' + seat, updated.name);
+      renderMiniScores();
     }
     setText('game-msg', (old ? old.name : 'Un joueur') + ' a quitté la partie, un bot le remplace.');
     return;
@@ -221,6 +222,15 @@ socket.on('room_closed', (data) => {
 });
 
 socket.on('error_msg', (data) => {
+  if (data.playRejected && playPending) {
+    // Le serveur a refusé ma carte : redonner la main au lieu de rester bloqué
+    playPending = false;
+    isMyTurn = true;
+    enableHand();
+    updatePlayableCards();
+    setText('game-msg', data.message + ' Jouez une autre carte.');
+    return;
+  }
   showModal('Erreur', data.message);
 });
 
@@ -292,6 +302,9 @@ socket.on('game_started', (data) => {
     ledSuit: null,
   };
   myHand = data.hands[myPlayerId] || [];
+  preselectedCard = null;
+  isMyTurn = false;
+  awaitingPassValidation = false;
   renderGame(data);
   renderHand(myHand);
   setText('game-msg', data.passingDirection !== 'none' ? passPrompt(data.passingDirection) : 'La partie commence.');
@@ -300,6 +313,7 @@ socket.on('game_started', (data) => {
     showPassControls();
   } else {
     gameState.phase = 'playing';
+    isMyTurn = data.currentTurn === myPlayerId;
     if (data.currentTurn === myPlayerId) {
       setText('turn-name', 'C\'est votre tour');
       setText('game-msg', 'Jouez une carte.');
@@ -325,6 +339,8 @@ socket.on('new_round', (data) => {
   myHand = data.hands[myPlayerId] || [];
   passSelection = [];
   selectedCard = null;
+  preselectedCard = null;
+  isMyTurn = false;
   renderScores(data.scores);
   renderHand(myHand);
   cancelTrickClear();
@@ -372,12 +388,14 @@ socket.on('pass_complete', (data) => {
 
   if (receivedIdxs.length > 0) {
     pendingCurrentTurn = data.currentTurn;
+    awaitingPassValidation = true;
     setText('game-msg', 'Vous avez reçu ' + receivedIdxs.length + ' carte(s). Cliquez sur "J\'ai vu les cartes" pour continuer.');
     showPassValidatedButton();
     disableHand();
     hidePlayButton();
   } else {
     setText('game-msg', 'Passage terminé.');
+    isMyTurn = data.currentTurn === myPlayerId;
     if (data.currentTurn === myPlayerId) {
       setText('turn-name', 'C\'est votre tour');
       setText('game-msg', 'Jouez une carte.');
@@ -406,6 +424,7 @@ socket.on('card_played', (data) => {
     gameState.ledSuit = data.card.suit;
   }
   if (data.playerId === myPlayerId) {
+    playPending = false;
     myHand = myHand.filter((c) => !(c.suit === data.card.suit && c.rank === data.card.rank));
     renderHand(myHand);
   }
@@ -423,11 +442,16 @@ socket.on('card_played', (data) => {
 
 socket.on('turn_changed', (data) => {
   stopTurnTimer();
+  // Le serveur peut annoncer deux fois le même tour : si ma carte est déjà
+  // partie (en attente de confirmation), ne pas redonner la main.
+  if (data.turn === myPlayerId && playPending) return;
+  isMyTurn = data.turn === myPlayerId;
   if (data.turn === myPlayerId) {
     setText('turn-name', 'C\'est votre tour');
     setText('game-msg', 'Jouez une carte.');
     enableHand();
     updatePlayableCards();
+    if (playPreselectedIfAny()) return;
     showPlayButton();
     startTurnTimerUI(60);
   } else {
@@ -507,10 +531,34 @@ socket.on('game_over', (data) => {
 function renderGame(data) {
   setText('round-badge', 'Round ' + (data.round || 1));
   setText('turn-name', 'Vous');
-  renderScores(data.scores || {});
   playerSeats = { [myPlayerId]: 'bottom' };
   renderOpponents(data.players);
+  const initialScores = data.scores || (data.players || []).reduce((acc, p) => { acc[p.id] = p.score || 0; return acc; }, {});
+  renderScores(initialScores);
   renderTrick([]);
+}
+
+// Petit tableau des scores en haut à gauche : total + points de la manche en cours
+let miniTotals = {};
+let miniRound = {};
+
+function renderMiniScores() {
+  const el = document.getElementById('score-mini');
+  if (!el) return;
+  const seatOrder = ['bottom', 'left', 'top', 'right'];
+  const ids = Object.keys(playerSeats).sort((a, b) => seatOrder.indexOf(playerSeats[a]) - seatOrder.indexOf(playerSeats[b]));
+  let html = '';
+  for (const pid of ids) {
+    const p = findPlayer(pid);
+    const name = pid === myPlayerId ? 'Vous' : (p ? p.name : 'Joueur');
+    const total = miniTotals[pid] || 0;
+    const round = miniRound[pid] || 0;
+    html += '<div class="score-mini-row' + (pid === myPlayerId ? ' me' : '') + '">' +
+      '<span class="score-mini-name">' + escapeHtml(name) + '</span>' +
+      '<span class="score-mini-val">' + total + (round ? ' <small>(+' + round + ')</small>' : '') + '</span>' +
+      '</div>';
+  }
+  el.innerHTML = html;
 }
 
 function findPlayer(pid) {
@@ -526,6 +574,10 @@ function renderScores(scores) {
   }
   html += '</table>';
   container.innerHTML = html;
+  // Totaux à jour : les points de manche repartent de zéro
+  miniTotals = Object.assign({}, scores);
+  miniRound = {};
+  renderMiniScores();
 }
 
 function showRoundScoresModal(roundScores, gameOver, finalScores) {
@@ -550,10 +602,8 @@ function showRoundScoresModal(roundScores, gameOver, finalScores) {
 }
 
 function setScoresRound(roundScores) {
-  for (const [pid, val] of Object.entries(roundScores)) {
-    const p = findPlayer(pid);
-    // visual only
-  }
+  miniRound = Object.assign({}, roundScores);
+  renderMiniScores();
 }
 
 function renderOpponents(players) {
@@ -625,6 +675,7 @@ function renderHand(hand) {
     container.appendChild(div);
   });
   layoutHand();
+  applyPreselect();
   // Recalcul une fois la mise en page appliquée (écran tout juste affiché)
   requestAnimationFrame(layoutHand);
 }
@@ -812,8 +863,10 @@ function hidePassValidatedButton() {
 
 function validatePassReceived() {
   socket.emit('pass_validated', { roomId: currentRoomId });
+  awaitingPassValidation = false;
   document.querySelectorAll('.game-card.received').forEach((el) => el.classList.remove('received'));
   hidePassValidatedButton();
+  isMyTurn = pendingCurrentTurn === myPlayerId;
   if (pendingCurrentTurn === myPlayerId) {
     setText('turn-name', 'C\'est votre tour');
     setText('game-msg', 'Jouez une carte.');
@@ -850,11 +903,23 @@ document.addEventListener('click', (e) => {
   if (!gameState) return;
   const cardEl = e.target.closest('.game-card');
   if (!cardEl) return;
-  if (cardEl.classList.contains('disabled') || cardEl.classList.contains('locked')) return;
   const idx = parseInt(cardEl.dataset.idx, 10);
+  // Pas encore mon tour : choisir une carte à l'avance
+  if (gameState.phase === 'playing' && !isMyTurn && !awaitingPassValidation) {
+    togglePreselect(idx);
+    return;
+  }
+  if (cardEl.classList.contains('disabled') || cardEl.classList.contains('locked')) return;
   if (gameState.phase === 'passing') {
     togglePassSelection(idx);
   } else if (gameState.phase === 'playing') {
+    const reason = whyNotPlayable(myHand[idx]);
+    if (reason) {
+      // Carte non jouable : ne pas la sélectionner
+      deselectCard();
+      setText('game-msg', reason);
+      return;
+    }
     if (selectedCard === idx) {
       playCard();
     } else {
@@ -862,6 +927,80 @@ document.addEventListener('click', (e) => {
     }
   }
 });
+
+// Raison pour laquelle une carte ne peut pas être jouée maintenant (null si jouable)
+function whyNotPlayable(card) {
+  if (!card) return 'Carte introuvable.';
+  const ledSuit = gameState.ledSuit || null;
+  if (isValidPlayClient(card, ledSuit, gameState.heartsBroken, myHand)) return null;
+  const suitsFr = { clubs: 'trèfle', diamonds: 'carreau', spades: 'pique', hearts: 'cœur' };
+  if (ledSuit && myHand.some((c) => c.suit === ledSuit)) {
+    return 'Vous devez jouer du ' + suitsFr[ledSuit] + '.';
+  }
+  if (!ledSuit && myHand.some((c) => c.suit === 'clubs' && c.rank === '2')) {
+    return 'Vous devez ouvrir avec le 2 de trèfle.';
+  }
+  if (card.suit === 'hearts') return 'Les cœurs ne sont pas encore entamés.';
+  return 'Cette carte ne peut pas être jouée.';
+}
+
+// Une carte a été envoyée au serveur et on attend sa confirmation
+let playPending = false;
+
+// --- Carte choisie à l'avance (jouée automatiquement à mon tour) ---
+let preselectedCard = null; // { suit, rank }
+let isMyTurn = false;
+let awaitingPassValidation = false;
+
+function cardLabel(card) {
+  const suitsFr = { clubs: 'trèfle', diamonds: 'carreau', spades: 'pique', hearts: 'cœur' };
+  const ranksFr = { J: 'valet', Q: 'dame', K: 'roi', A: 'as' };
+  return (ranksFr[card.rank] || card.rank) + ' de ' + (suitsFr[card.suit] || card.suit);
+}
+
+function togglePreselect(idx) {
+  const card = myHand[idx];
+  if (!card) return;
+  if (preselectedCard && preselectedCard.suit === card.suit && preselectedCard.rank === card.rank) {
+    clearPreselect();
+    setText('game-msg', 'Carte choisie à l\'avance annulée.');
+    return;
+  }
+  preselectedCard = { suit: card.suit, rank: card.rank };
+  applyPreselect();
+  setText('game-msg', 'Le ' + cardLabel(card) + ' sera joué automatiquement à votre tour.');
+}
+
+function clearPreselect() {
+  preselectedCard = null;
+  applyPreselect();
+}
+
+function applyPreselect() {
+  document.querySelectorAll('#hand-cards .game-card').forEach((el) => {
+    const c = myHand[parseInt(el.dataset.idx, 10)];
+    const on = !!(preselectedCard && c && c.suit === preselectedCard.suit && c.rank === preselectedCard.rank);
+    el.classList.toggle('preselected', on);
+  });
+}
+
+// À mon tour : jouer la carte choisie à l'avance si elle est encore valide.
+// Retourne true si la carte a été jouée.
+function playPreselectedIfAny() {
+  if (!preselectedCard) return false;
+  const idx = myHand.findIndex((c) => c.suit === preselectedCard.suit && c.rank === preselectedCard.rank);
+  const card = myHand[idx];
+  clearPreselect();
+  if (idx === -1) return false;
+  if (!isValidPlayClient(card, gameState.ledSuit, gameState.heartsBroken, myHand)) {
+    setText('game-msg', 'Le ' + cardLabel(card) + ' ne peut pas être joué maintenant. Jouez une carte.');
+    return false;
+  }
+  selectedCard = idx;
+  playCard();
+  setText('game-msg', 'Le ' + cardLabel(card) + ' a été joué automatiquement.');
+  return true;
+}
 
 function togglePassSelection(idx) {
   const cardEl = document.querySelector('.game-card[data-idx="' + idx + '"]');
@@ -884,7 +1023,15 @@ function playCard() {
     return;
   }
   const card = myHand[selectedCard];
+  const reason = whyNotPlayable(card);
+  if (reason) {
+    deselectCard();
+    setText('game-msg', reason);
+    return;
+  }
   socket.emit('play_card', { roomId: currentRoomId, card: card });
+  playPending = true;
+  isMyTurn = false;
   deselectCard();
   disableHand();
   hidePlayButton();
