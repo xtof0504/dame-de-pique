@@ -3,6 +3,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const fs = require('fs');
+const botAI = require('./server/bot-ai');
 const cors = require('cors');
 
 const app = express();
@@ -327,7 +328,7 @@ io.on('connection', (socket) => {
       // Faire passer automatiquement les bots restants
       const remainingBots = room.players.filter(p => !game.passedCards[p.id] && p.isBot);
       for (const bot of remainingBots) {
-        const passCards = selectPassCards(bot.hand);
+        const passCards = selectPassCardsFor(room, bot);
         game.passedCards[bot.id] = passCards;
         for (const c of passCards) {
           const idx = bot.hand.findIndex(h => sameCard(h, c));
@@ -406,7 +407,7 @@ function resumeAfterReplacement(room, bot) {
   if (game.phase === 'passing') {
     // Le bot passe ses cartes s'il ne l'avait pas encore fait
     if (!game.passedCards[bot.id]) {
-      const passCards = selectPassCards(bot.hand);
+      const passCards = selectPassCardsFor(room, bot);
       game.passedCards[bot.id] = passCards;
       for (const c of passCards) {
         const idx = bot.hand.findIndex(h => sameCard(h, c));
@@ -548,6 +549,8 @@ function initGameState(room) {
     mustPass: {},
     round: 1,
     gameOver: false,
+    playedCards: [], // cartes des plis terminés de la manche (mémoire des bots)
+    botMoon: {},     // bots qui visent tous les points cette manche
   };
   for (const p of room.players) room.game.mustPass[p.id] = true;
 }
@@ -560,7 +563,7 @@ function advanceTurn(room) {
   const game = room.game;
   const idx = room.players.findIndex(p => p.id === game.turn);
   game.turn = room.players[(idx + 1) % MAX_PLAYERS].id;
-  notifyTurn(room);
+  // L'annonce du tour est faite par startTurnTimer (appelé juste après)
 }
 
 function notifyTurn(room) {
@@ -605,6 +608,7 @@ function resolveTrick(room) {
   }
 
   game.tricks[winner.playerId].push(...trick.map(tc => tc.card));
+  game.playedCards.push(...trick.map(tc => tc.card));
   game.roundScores[winner.playerId] += points;
   game.currentTrickWinner = winner.playerId;
 
@@ -704,6 +708,8 @@ function endRound(room) {
     game.passedCards = {};
     // Les points de manche repartent de zéro
     for (const p of room.players) game.roundScores[p.id] = 0;
+    game.playedCards = [];
+    game.botMoon = {};
     for (const p of room.players) game.mustPass[p.id] = !noPass;
     for (const p of room.players) game.passValidations[p.id] = noPass;
     dealCards(room);
@@ -854,68 +860,35 @@ function completePass(room) {
   // Le timer est démarré quand tous les joueurs ont validé (socket pass_validated)
 }
 
-function cardSortKey(c) {
-  let score = 0;
-  if (c.suit === 'spades' && c.rank === 'Q') score += 100;
-  if (c.suit === 'hearts') {
-    score += 50;
-    score += rankValue[c.rank] * 2;
-  }
-  score += rankValue[c.rank];
-  if (c.suit === 'spades' && rankValue[c.rank] >= 11) score += 20;
-  return score;
+// --- Choix des bots (voir server/bot-ai.js) ---
+
+function botContext(room, player, allowMoon) {
+  const game = room.game;
+  return {
+    hand: player.hand,
+    ledSuit: game.trickCards.length > 0 ? game.trickCards[0].card.suit : null,
+    heartsBroken: game.heartsBroken,
+    trickCards: game.trickCards,
+    myId: player.id,
+    players: room.players.map(p => p.id),
+    playedCards: game.playedCards || [],
+    roundScores: game.roundScores,
+    totalScores: game.scores,
+    moonPlan: allowMoon && !!(game.botMoon && game.botMoon[player.id]),
+    allowMoon,
+  };
 }
 
-function selectPassCards(hand) {
-  return [...hand].sort((a, b) => cardSortKey(b) - cardSortKey(a)).slice(0, 3);
+// allowMoon = false pour un humain dont le temps est écoulé (on joue prudemment pour lui)
+function selectPlayCardFor(room, player, allowMoon = true) {
+  return botAI.choosePlay(botContext(room, player, allowMoon));
 }
 
-function selectPlayCard(hand, ledSuit, heartsBroken, trickCards) {
-  const playable = hand.filter(c => isValidPlay(hand, c, ledSuit, heartsBroken));
-  if (playable.length === 0) return hand[0] || null;
-
-  if (ledSuit === null) {
-    let candidates = playable;
-    if (!heartsBroken) {
-      const nonHearts = playable.filter(c => c.suit !== 'hearts');
-      if (nonHearts.length > 0) candidates = nonHearts;
-    }
-    const noQueen = candidates.filter(c => !(c.suit === 'spades' && c.rank === 'Q'));
-    if (noQueen.length > 0) candidates = noQueen;
-    candidates.sort((a, b) => rankValue[a.rank] - rankValue[b.rank]);
-    return candidates[0];
-  }
-
-  const sameSuit = playable.filter(c => c.suit === ledSuit);
-  if (sameSuit.length > 0) {
-    const bestOnTable = trickCards
-      .filter(tc => tc.card.suit === ledSuit)
-      .map(tc => rankValue[tc.card.rank]);
-    const maxTable = bestOnTable.length > 0 ? Math.max(...bestOnTable) : 0;
-
-    const canAvoid = sameSuit.filter(c => rankValue[c.rank] < maxTable);
-    if (canAvoid.length > 0) {
-      const noQueen = canAvoid.filter(c => !(c.suit === 'spades' && c.rank === 'Q'));
-      if (noQueen.length > 0) {
-        noQueen.sort((a, b) => rankValue[b.rank] - rankValue[a.rank]);
-        return noQueen[0];
-      }
-      canAvoid.sort((a, b) => rankValue[b.rank] - rankValue[a.rank]);
-      return canAvoid[0];
-    }
-    sameSuit.sort((a, b) => rankValue[a.rank] - rankValue[b.rank]);
-    const noQueen = sameSuit.filter(c => !(c.suit === 'spades' && c.rank === 'Q'));
-    if (noQueen.length > 0) return noQueen[0];
-    return sameSuit[0];
-  }
-
-  const noQueen = playable.filter(c => !(c.suit === 'spades' && c.rank === 'Q'));
-  if (noQueen.length > 0) {
-    noQueen.sort((a, b) => rankValue[a.rank] - rankValue[b.rank]);
-    return noQueen[0];
-  }
-  playable.sort((a, b) => rankValue[a.rank] - rankValue[b.rank]);
-  return playable[0];
+function selectPassCardsFor(room, player) {
+  const { cards, moon } = botAI.choosePass(player.hand);
+  if (!room.game.botMoon) room.game.botMoon = {};
+  room.game.botMoon[player.id] = moon;
+  return cards;
 }
 
 function startTurnTimer(room) {
@@ -931,8 +904,7 @@ function startTurnTimer(room) {
   }
   room.turnTimer = setTimeout(() => {
     if (!room.game || room.game.turn !== current.id) return;
-    const playable = current.hand.filter(c => isValidPlay(current.hand, c, game.trickCards.length > 0 ? game.trickCards[0].card.suit : null, game.heartsBroken));
-    const card = selectPlayCard(current.hand, game.trickCards.length > 0 ? game.trickCards[0].card.suit : null, game.heartsBroken, game.trickCards);
+    const card = selectPlayCardFor(room, current, false);
     if (card) playCardLogic(room, current.id, card);
   }, 60000);
 }
@@ -944,13 +916,12 @@ function botPlay(room) {
   if (!current || !current.isBot) return;
 
   if (game.phase === 'passing') {
-    const passCards = selectPassCards(current.hand);
+    const passCards = selectPassCardsFor(room, current);
     playCardLogicPass(room, current.id, passCards);
     return;
   }
 
-  const ledSuit = game.trickCards.length > 0 ? game.trickCards[0].card.suit : null;
-  const card = selectPlayCard(current.hand, ledSuit, game.heartsBroken, game.trickCards);
+  const card = selectPlayCardFor(room, current);
   if (card) playCardLogic(room, current.id, card);
 }
 
