@@ -6,3 +6,4 @@ www/
 *.class
 *.log
 *.err
+data/

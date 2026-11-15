@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
+const fs = require('fs');
 const cors = require('cors');
 
 const app = express();
@@ -159,6 +160,10 @@ io.on('connection', (socket) => {
       hasHumans: r.players.some(p => !p.isBot),
     }));
     socket.emit('rooms_list', list);
+  });
+
+  socket.on('get_hall_of_fame', () => {
+    socket.emit('hall_of_fame', { players: hallOfFameRanking() });
   });
 
   socket.on('join', ({ name, roomId }) => {
@@ -719,10 +724,88 @@ function endRound(room) {
   }
 }
 
+// --- Hall of Fame : statistiques des joueurs humains, conservées dans un fichier ---
+const HALL_OF_FAME_FILE = path.join(__dirname, 'data', 'hall-of-fame.json');
+let hallOfFame = { players: {} };
+try {
+  hallOfFame = JSON.parse(fs.readFileSync(HALL_OF_FAME_FILE, 'utf8'));
+  if (!hallOfFame.players) hallOfFame.players = {};
+} catch (e) {
+  // Pas encore de fichier : on part d'un classement vide
+}
+
+function saveHallOfFame() {
+  fs.mkdir(path.dirname(HALL_OF_FAME_FILE), { recursive: true }, (err) => {
+    if (err) return console.error('Hall of Fame : dossier impossible à créer', err);
+    fs.writeFile(HALL_OF_FAME_FILE, JSON.stringify(hallOfFame, null, 2), (err2) => {
+      if (err2) console.error('Hall of Fame : sauvegarde impossible', err2);
+    });
+  });
+}
+
+// Points du classement selon la place parmi les humains de la partie.
+// n humains, place r (1 = meilleur) : (n+1)/2 - r, arrondi en s'éloignant de zéro.
+//   2 humains : +1 / -1        3 humains : +1 / 0 / -1
+//   4 humains : +2 / +1 / -1 / -2
+// En cas d'égalité de score, les joueurs ex aequo se partagent les points de leurs places.
+function rankPoints(n, r) {
+  const v = (n + 1) / 2 - r;
+  return Math.sign(v) * Math.ceil(Math.abs(v));
+}
+
+function computeHumanPoints(results) {
+  // results : [{ name, score }] ; score le plus bas = meilleure place
+  const sorted = [...results].sort((a, b) => a.score - b.score);
+  const n = sorted.length;
+  const points = {};
+  let i = 0;
+  while (i < n) {
+    let j = i;
+    while (j + 1 < n && sorted[j + 1].score === sorted[i].score) j++;
+    let sum = 0;
+    for (let r = i + 1; r <= j + 1; r++) sum += rankPoints(n, r);
+    const share = sum / (j - i + 1);
+    for (let k = i; k <= j; k++) points[sorted[k].name] = share;
+    i = j + 1;
+  }
+  return points;
+}
+
+// Enregistre une partie terminée normalement.
+// Seules les parties avec au moins 2 humains comptent (contre des bots seulement :
+// les statistiques ne changent pas).
+function recordGameResult(room) {
+  const game = room.game;
+  const humans = room.players.filter(p => !p.isBot);
+  if (humans.length < 2) return;
+  const results = humans.map(p => ({ name: p.name, score: game.scores[p.id] }));
+  const points = computeHumanPoints(results);
+  const bestHumanScore = Math.min(...results.map(r => r.score));
+  for (const r of results) {
+    const stats = hallOfFame.players[r.name] || { name: r.name };
+    stats.points = (stats.points || 0) + points[r.name];
+    stats.games = (stats.games || 0) + 1;
+    stats.wins = (stats.wins || 0) + (r.score === bestHumanScore ? 1 : 0);
+    if (stats.bestScore === undefined || stats.bestScore === null || r.score < stats.bestScore) stats.bestScore = r.score;
+    stats.lastPlayed = new Date().toISOString();
+    hallOfFame.players[r.name] = stats;
+  }
+  saveHallOfFame();
+}
+
+// Classement : points, puis victoires, puis moins de parties jouées
+function hallOfFameRanking() {
+  return Object.values(hallOfFame.players)
+    .map(p => ({ name: p.name, points: p.points || 0, games: p.games || 0, wins: p.wins || 0, bestScore: p.bestScore ?? null }))
+    .sort((a, b) => (b.points - a.points) || (b.wins - a.wins) || (a.games - b.games));
+}
+
 function endGame(room, reason) {
   const game = room.game;
+  if (game.gameOver) return;
   game.gameOver = true;
   resetTurnTimers(room);
+  if (reason === 'normal') recordGameResult(room);
   broadcastRoom(room.id, 'game_over', {
     scores: game.scores,
     reason,

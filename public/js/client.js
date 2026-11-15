@@ -140,6 +140,49 @@ btnBackRooms.addEventListener('click', () => {
   show(screens.nickname);
 });
 
+// Hall of Fame : page de classement des joueurs humains
+document.getElementById('btn-hall-of-fame').addEventListener('click', () => {
+  setHTML('hof-body', '<p class="hof-empty">Chargement...</p>');
+  show('screen-hof');
+  socket.emit('get_hall_of_fame');
+});
+
+document.getElementById('btn-back-hof').addEventListener('click', () => {
+  show(screens.rooms);
+  loadRooms();
+});
+
+function formatPoints(v) {
+  const txt = Number.isInteger(v) ? String(v) : v.toFixed(1).replace('.', ',');
+  return v > 0 ? '+' + txt : txt;
+}
+
+socket.on('hall_of_fame', (data) => {
+  const players = (data && data.players) || [];
+  if (players.length === 0) {
+    setHTML('hof-body', '<p class="hof-empty">Aucune partie entre humains terminée pour le moment.</p>');
+    return;
+  }
+  const medals = ['&#129351;', '&#129352;', '&#129353;'];
+  let html = '<table class="hof-table"><tr><th>#</th><th>Joueur</th><th>Points</th>' +
+    '<th title="Parties jouées">Parties</th><th title="Parties finies premier parmi les humains">Vict.</th>' +
+    '<th title="Meilleur score (le plus bas)">Record</th></tr>';
+  players.forEach((p, i) => {
+    const me = nickname && p.name === nickname;
+    const cls = p.points > 0 ? 'pts pos' : (p.points < 0 ? 'pts neg' : 'pts');
+    html += '<tr' + (me ? ' class="me"' : '') + '>' +
+      '<td>' + (medals[i] || (i + 1)) + '</td>' +
+      '<td>' + escapeHtml(p.name) + '</td>' +
+      '<td class="' + cls + '">' + formatPoints(p.points) + '</td>' +
+      '<td>' + p.games + '</td>' +
+      '<td>' + p.wins + '</td>' +
+      '<td>' + (p.bestScore === null ? '-' : p.bestScore) + '</td>' +
+      '</tr>';
+  });
+  html += '</table>';
+  setHTML('hof-body', html);
+});
+
 function loadRooms() {
   roomsGrid.innerHTML = '';
   roomStatus.textContent = 'Chargement des salles...';

@@ -97,6 +97,16 @@
     .modal.hidden, .overlay.hidden { display: none; }
     .modal-content { background: #fff; border-radius: 16px; padding: 28px 24px; max-width: 90%; width: 320px; text-align: center; box-shadow: 0 12px 32px rgba(0,0,0,0.3); }
     .modal-content h3 { margin-bottom: 12px; }
+    .hof-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 4px; }
+    .hof-table th, .hof-table td { padding: 5px 3px; border-bottom: 1px solid #e5e7eb; }
+    .hof-table th { font-size: 11px; color: var(--secondary); font-weight: 700; }
+    .hof-table td:nth-child(2) { text-align: left; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .hof-table tr.me td { font-weight: 800; color: var(--primary); }
+    .hof-empty { color: var(--secondary); font-size: 14px; }
+    .hof-table td.pts { font-weight: 800; }
+    .hof-table td.pos { color: var(--success); }
+    .hof-table td.neg { color: var(--danger); }
+    .hof-rules { font-size: 11px; color: var(--secondary); text-align: center; margin: 12px 0 4px; line-height: 1.4; }
     .modal-content p { margin-bottom: 20px; font-size: 15px; color: #374151; }
     .scores-table { width: 100%; border-collapse: collapse; margin: 0 auto; }
     .scores-table th, .scores-table td { border: 1px solid #e5e7eb; padding: 6px 10px; text-align: center; }
@@ -159,7 +169,18 @@
       <p class="subtitle">Choisissez une salle (20 min max)</p>
       <div class="rooms-grid" id="rooms-grid"></div>
       <div class="room-status" id="room-status"></div>
+      <button id="btn-hall-of-fame" class="btn btn-secondary">&#127942; Hall of Fame</button>
       <button id="btn-back-rooms" class="btn btn-secondary">Retour</button>
+    </div>
+  </div>
+
+  <div class="screen hidden" id="screen-hof">
+    <div class="card">
+      <h1>&#127942; Hall of Fame</h1>
+      <p class="subtitle">Classement des joueurs humains</p>
+      <div id="hof-body"></div>
+      <p class="hof-rules">Points gagnés en finissant devant d'autres humains dans une partie (4 humains : +2 / +1 / &minus;1 / &minus;2 ; 3 humains : +1 / 0 / &minus;1 ; 2 humains : +1 / &minus;1). Les bots ne comptent pas.</p>
+      <button id="btn-back-hof" class="btn btn-secondary">Retour</button>
     </div>
   </div>
 
@@ -246,7 +267,7 @@
 <script>
   (function () {
     var c = document.createElement('script');
-    c.src = 'js/client.js?v=32';
+    c.src = 'js/client.js?v=34';
     document.head.appendChild(c);
   })();
 </script>
