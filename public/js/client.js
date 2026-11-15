@@ -131,6 +131,16 @@ btnContinue.addEventListener('click', () => {
   loadRooms();
 });
 
+// Règle du jeu
+document.getElementById('btn-rules').addEventListener('click', () => {
+  show('screen-rules');
+  window.scrollTo(0, 0);
+});
+document.getElementById('btn-back-rules').addEventListener('click', () => {
+  show(screens.nickname);
+  window.scrollTo(0, 0);
+});
+
 // Rooms screen
 const roomsGrid = document.getElementById('rooms-grid');
 const roomStatus = document.getElementById('room-status');
@@ -347,6 +357,7 @@ socket.on('game_started', (data) => {
     passingDirection: data.passingDirection,
     phase: 'passing',
     ledSuit: null,
+    firstTrick: true,
   };
   myHand = data.hands[myPlayerId] || [];
   preselectedCard = null;
@@ -378,6 +389,7 @@ socket.on('new_round', (data) => {
   const noPass = data.passingDirection === 'none';
   gameState.round = data.round;
   gameState.heartsBroken = false;
+  gameState.firstTrick = true;
   gameState.ledSuit = null;
   gameState.phase = noPass ? 'playing' : 'passing';
   gameState.passingDirection = data.passingDirection;
@@ -523,6 +535,7 @@ socket.on('turn_changed', (data) => {
 });
 
 socket.on('trick_ended', (data) => {
+  if (gameState) gameState.firstTrick = false;
   if (data.players) data.players.forEach(p => { playersById[p.id] = p; });
   const p = findPlayer(data.winner);
   const winnerName = p ? p.name : 'Joueur ' + data.winner;
@@ -858,11 +871,19 @@ function stopTurnTimer() {
   }
 }
 
+function isPointCard(c) {
+  return c.suit === 'hearts' || (c.suit === 'spades' && c.rank === 'Q');
+}
+
 function isValidPlayClient(card, ledSuit, heartsBroken, hand) {
+  const firstTrick = !!(gameState && gameState.firstTrick);
   const hasLed = ledSuit ? hand.some(c => c.suit === ledSuit) : false;
   if (ledSuit && hasLed) {
     return card.suit === ledSuit;
   }
+  // Premier pli : interdit de jouer des points (cœur ou Dame de pique)
+  // sauf si la main ne contient que des cartes à points
+  if (firstTrick && isPointCard(card) && !hand.every(isPointCard)) return false;
   // Premier coup du round: le 2 de trèfle est obligatoire si détenu
   if (ledSuit === null) {
     const hasTwoClubs = hand.some(c => c.suit === 'clubs' && c.rank === '2');
@@ -997,6 +1018,7 @@ function whyNotPlayable(card) {
   if (!ledSuit && myHand.some((c) => c.suit === 'clubs' && c.rank === '2')) {
     return 'Vous devez ouvrir avec le 2 de trèfle.';
   }
+  if (gameState.firstTrick && isPointCard(card)) return 'Pas de points au premier pli (cœur ou Dame de pique).';
   if (card.suit === 'hearts') return 'Les cœurs ne sont pas encore entamés.';
   return 'Cette carte ne peut pas être jouée.';
 }
@@ -1227,6 +1249,7 @@ socket.on('game_state', (data) => {
     passingDirection: data.passingDirection,
     phase: data.phase,
     ledSuit,
+    firstTrick: data.firstTrick !== false,
   };
   renderGame({ players: data.players, round: data.round, scores: data.scores });
   setScoresRound(data.roundScores);

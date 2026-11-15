@@ -297,7 +297,10 @@ io.on('connection', (socket) => {
     if (cardIdx === -1) return reject('Cette carte n\'est pas dans votre main.');
 
     const ledSuit = game.trickCards.length > 0 ? game.trickCards[0].card.suit : null;
-    if (!isValidPlay(player.hand, card, ledSuit, game.heartsBroken)) return reject('Cette carte ne peut pas être jouée.');
+    if (!isValidPlay(player.hand, card, ledSuit, game.heartsBroken, isFirstTrick(game))) {
+      if (isFirstTrick(game) && isPointCard(card)) return reject('Pas de points au premier pli (cœur ou Dame de pique).');
+      return reject('Cette carte ne peut pas être jouée.');
+    }
     if (game.mustPass && game.mustPass[player.id]) {
       return reject('Vous devez passer une carte en premier.');
     }
@@ -493,6 +496,7 @@ function gameSnapshot(room, seat) {
     hand,
     trickCards: game.trickCards.map(tc => ({ playerId: tc.playerId, card: tc.card })),
     heartsBroken: game.heartsBroken,
+    firstTrick: isFirstTrick(game),
     phase: game.phase,
     passingDirection: game.passingDirection,
     hasPassed: !!passed,
@@ -668,6 +672,11 @@ function initGameState(room) {
   for (const p of room.players) room.game.mustPass[p.id] = true;
 }
 
+// Premier pli de la manche : aucun pli n'est encore terminé
+function isFirstTrick(game) {
+  return !game.playedCards || game.playedCards.length === 0;
+}
+
 function gameCurrentTurn(game) {
   return game.turn;
 }
@@ -683,11 +692,18 @@ function notifyTurn(room) {
   broadcastRoom(room.id, 'turn_changed', { turn: room.game.turn });
 }
 
-function isValidPlay(hand, card, ledSuit, heartsBroken) {
+function isPointCard(c) {
+  return c.suit === 'hearts' || (c.suit === 'spades' && c.rank === 'Q');
+}
+
+function isValidPlay(hand, card, ledSuit, heartsBroken, firstTrick) {
   const hasLed = ledSuit ? hand.some(c => c.suit === ledSuit) : false;
   if (ledSuit && hasLed) {
     return card.suit === ledSuit;
   }
+  // Premier pli : interdit de jouer des points (cœur ou Dame de pique)
+  // sauf si la main ne contient que des cartes à points
+  if (firstTrick && isPointCard(card) && !hand.every(isPointCard)) return false;
   if (ledSuit === 'hearts' && !heartsBroken) {
     const onlyHearts = hand.every(c => c.suit === 'hearts');
     if (!onlyHearts && card.suit === 'hearts') return false;
@@ -1060,7 +1076,7 @@ function playCardLogic(room, socketId, card) {
   const cardIdx = player.hand.findIndex(c => sameCard(c, card));
   if (cardIdx === -1) return;
   const ledSuit = game.trickCards.length > 0 ? game.trickCards[0].card.suit : null;
-  if (!isValidPlay(player.hand, card, ledSuit, game.heartsBroken)) return;
+  if (!isValidPlay(player.hand, card, ledSuit, game.heartsBroken, isFirstTrick(game))) return;
   // Premier coup du round: le joueur doit ouvrir avec le 2 de trèfle s'il le détient
   if (game.trickCards.length === 0) {
     const hasTwoClubs = player.hand.some(c => c.suit === 'clubs' && c.rank === '2');

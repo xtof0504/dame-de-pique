@@ -26,9 +26,15 @@ const lowest = (cards) => cards.reduce((a, b) => (rv(b) < rv(a) ? b : a));
 const highest = (cards) => cards.reduce((a, b) => (rv(b) > rv(a) ? b : a));
 
 // Règles (identiques à celles du serveur)
-function isValidPlay(hand, card, ledSuit, heartsBroken) {
+function isPointCard(c) {
+  return c.suit === 'hearts' || (c.suit === 'spades' && c.rank === 'Q');
+}
+
+function isValidPlay(hand, card, ledSuit, heartsBroken, firstTrick) {
   const hasLed = ledSuit ? hand.some((c) => c.suit === ledSuit) : false;
   if (ledSuit && hasLed) return card.suit === ledSuit;
+  // Premier pli : pas de points, sauf si la main n'a que des cartes à points
+  if (firstTrick && isPointCard(card) && !hand.every(isPointCard)) return false;
   if (ledSuit === null) {
     const hasTwoClubs = hand.some((c) => c.suit === 'clubs' && c.rank === '2');
     if (hasTwoClubs) return card.suit === 'clubs' && card.rank === '2';
@@ -38,7 +44,8 @@ function isValidPlay(hand, card, ledSuit, heartsBroken) {
 }
 
 function legalCards(ctx) {
-  const legal = ctx.hand.filter((c) => isValidPlay(ctx.hand, c, ctx.ledSuit, ctx.heartsBroken));
+  const firstTrick = !ctx.playedCards || ctx.playedCards.length === 0;
+  const legal = ctx.hand.filter((c) => isValidPlay(ctx.hand, c, ctx.ledSuit, ctx.heartsBroken, firstTrick));
   return legal.length ? legal : ctx.hand.slice();
 }
 
