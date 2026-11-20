@@ -817,7 +817,7 @@ function endRound(room) {
   let gameOver = false;
   let winnerId = null;
   for (const p of room.players) {
-    if (game.scores[p.id] >= 100) {
+    if (game.scores[p.id] >= 50) {
       gameOver = true;
     }
   }

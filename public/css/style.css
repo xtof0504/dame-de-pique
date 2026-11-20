@@ -23,6 +23,8 @@ body {
   color: var(--text);
   min-height: 100vh;
   padding: 12px;
+  /* Place réservée pour la bannière AdMob (0 hors de l'app Android) */
+  padding-bottom: calc(12px + var(--ad-height, 0px));
   display: flex;
   flex-direction: column;
   align-items: center;
